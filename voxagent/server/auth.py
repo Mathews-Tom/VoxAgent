@@ -30,7 +30,7 @@ def _get_serializer(secret: str) -> URLSafeTimedSerializer:
 
 @router.get("/login")
 async def login_page(request: Request) -> Response:
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @router.post("/login")
@@ -43,8 +43,9 @@ async def login(
         tenant_uuid = uuid.UUID(tenant_id)
     except ValueError:
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Invalid tenant ID."},
+            context={"error": "Invalid tenant ID."},
             status_code=400,
         )
 
@@ -53,15 +54,17 @@ async def login(
 
     if tenant is None or tenant.password_hash is None:
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Invalid credentials."},
+            context={"error": "Invalid credentials."},
             status_code=401,
         )
 
     if _hash_password(password) != tenant.password_hash:
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Invalid credentials."},
+            context={"error": "Invalid credentials."},
             status_code=401,
         )
 
