@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import asyncpg
 from livekit import rtc
 from livekit.agents import Agent, AgentSession, RoomInputOptions
 from livekit.plugins import silero
 
 from voxagent.config import Config
-from voxagent.models import TenantConfig
+from voxagent.models import ConversationRecord, TenantConfig
 from voxagent.plugins.llm import create_llm
 from voxagent.plugins.stt import create_stt
 from voxagent.plugins.tts import create_tts
+from voxagent.queries import create_conversation
 
 if TYPE_CHECKING:
     from voxagent.knowledge.engine import KnowledgeEngine
@@ -29,6 +32,7 @@ class VoxAgent:
         self._llm = create_llm(tenant_config.llm, app_config)
         self._tts = create_tts(tenant_config.tts, app_config)
         self._vad = silero.VAD.load()
+        self._transcript: list[dict[str, str]] = []
 
     def build_session(self) -> AgentSession:
         return AgentSession(
@@ -49,6 +53,29 @@ class VoxAgent:
             instructions=self._tenant_config.llm.system_prompt,
             tools=tools,
         )
+
+    def on_message(self, role: str, content: str) -> None:
+        self._transcript.append({"role": role, "content": content})
+
+    async def save_conversation(
+        self,
+        pool: asyncpg.Pool,
+        room_name: str,
+        visitor_id: str,
+        started_at: datetime,
+    ) -> ConversationRecord:
+        ended_at = datetime.now(UTC)
+        duration_seconds = (ended_at - started_at).total_seconds()
+        record = ConversationRecord(
+            tenant_id=self._tenant_config.id,
+            visitor_id=visitor_id,
+            room_name=room_name,
+            transcript=self._transcript,
+            duration_seconds=duration_seconds,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        return await create_conversation(pool, record)
 
     async def start(
         self,
