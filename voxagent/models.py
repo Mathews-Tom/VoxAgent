@@ -53,6 +53,7 @@ class TenantConfig(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     name: str
     domain: str
+    password_hash: str | None = None
     stt: STTConfig = Field(default_factory=STTConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
