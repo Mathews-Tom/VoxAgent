@@ -4,37 +4,37 @@ VoxAgent is a multi-tenant voice AI platform with two runtimes (Python backend +
 
 ## System Overview
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  Browser                                                             │
-│  ┌────────────────┐                                                  │
-│  │  Voice Widget   │ ── WebRTC audio ──→ LiveKit Server              │
-│  │  (Next.js)      │ ← WebRTC audio ───┘       │                    │
-│  └────────┬───────┘                             │                    │
-│           │ REST                                │                    │
-│           ▼                                     ▼                    │
-│  ┌──────────────────┐                  ┌──────────────────┐          │
-│  │  FastAPI Server   │                  │  VoxAgent Worker  │          │
-│  │                   │                  │                   │          │
-│  │  /api/token       │                  │  STT (Whisper/    │          │
-│  │  /api/tenants     │                  │       Deepgram)   │          │
-│  │  /dashboard/*     │                  │  LLM (Ollama/     │          │
-│  │  /health          │                  │       OpenAI)     │          │
-│  │  /metrics         │                  │  TTS (Qwen3/      │          │
-│  │                   │                  │       ElevenLabs)  │          │
-│  └────────┬──────────┘                  │  VAD (Silero)     │          │
-│           │                             │                   │          │
-│           │                             │  Knowledge Tool   │          │
-│           │                             │  MCP Tools        │          │
-│           │                             │  Handoff Detector │          │
-│           │                             └────────┬──────────┘          │
-│           │                                      │                    │
-│           ▼                                      ▼                    │
-│  ┌───────────────────────────────────────────────────────────┐       │
-│  │  PostgreSQL                                                │       │
-│  │  tenants │ conversations │ leads │ visitor_memories         │       │
-│  └───────────────────────────────────────────────────────────┘       │
-└──────────────────────────────────────────────────────────────────────┘
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Browser                                                        │
+│  ┌────────────────┐                                             │
+│  │  Voice Widget  │ ── WebRTC audio ──→ LiveKit Server          │
+│  │  (Next.js)     │ ← WebRTC audio ───┘       │                 │
+│  └────────┬───────┘                           │                 │
+│           │ REST                              │                 │
+│           ▼                                   ▼                 │
+│  ┌──────────────────┐                  ┌───────────────────┐    │
+│  │  FastAPI Server   │                 │  VoxAgent Worker  │    │
+│  │                   │                 │                   │    │
+│  │  /api/token       │                 │  STT (Whisper/    │    │
+│  │  /api/tenants     │                 │       Deepgram)   │    │
+│  │  /dashboard/*     │                 │  LLM (Ollama/     │    │
+│  │  /health          │                 │       OpenAI)     │    │
+│  │  /metrics         │                 │  TTS (Qwen3/      │    │
+│  │                   │                 │      ElevenLabs)  │    │
+│  └────────┬──────────┘                 │  VAD (Silero)     │    │
+│           │                            │                   │    │
+│           │                            │  Knowledge Tool   │    │
+│           │                            │  MCP Tools        │    │
+│           │                            │  Handoff Detector │    │
+│           │                            └────────┬──────────┘    │
+│           │                                     │               │
+│           ▼                                     ▼               │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  PostgreSQL                                               │  │
+│  │  tenants │ conversations │ leads │ visitor_memories       │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Components
@@ -66,6 +66,7 @@ The LiveKit agent worker runs as a separate process from the API server. When a 
 - **TTS**: Text-to-Speech — converts response text to audio (Qwen3, ElevenLabs, or Cartesia)
 
 The LLM receives a system prompt constructed from:
+
 1. Language-matching instruction (respond in the user's language)
 2. Visitor memory context (from prior sessions, if available)
 3. The tenant's custom system prompt
@@ -74,14 +75,14 @@ The LLM receives a system prompt constructed from:
 
 Hybrid retrieval system combining lexical and semantic search:
 
-```
-Query ──→ BM25 (lexical) ──→ Ranked list A ──┐
+```text
+Query ──→ BM25 (lexical) ──→ Ranked list A ────┐
      └──→ FAISS (semantic) ──→ Ranked list B ──┤
-                                                ▼
-                                     Reciprocal Rank Fusion (k=60)
-                                                │
-                                                ▼
-                                        Merged ranked results
+                                               ▼
+                                    Reciprocal Rank Fusion (k=60)
+                                               │
+                                               ▼
+                                       Merged ranked results
 ```
 
 - **BM25** (`rank_bm25`): Token-level matching, good for exact terms
@@ -93,11 +94,11 @@ Query ──→ BM25 (lexical) ──→ Ranked list A ──┐
 
 Three trigger types for escalation to human agents:
 
-| Trigger | Detection Method |
-|---------|-----------------|
+| Trigger          | Detection Method                                        |
+| ---------------- | ------------------------------------------------------- |
 | Explicit request | Phrase matching: "talk to a human", "transfer me", etc. |
-| Repeated failure | 3+ identical user messages in a 5-message window |
-| Keyword match | Tenant-configured custom keywords |
+| Repeated failure | 3+ identical user messages in a 5-message window        |
+| Keyword match    | Tenant-configured custom keywords                       |
 
 When triggered, a webhook fires with the conversation context.
 
@@ -139,7 +140,7 @@ Deployable as a standalone app or embedded via `<script>` tag.
 
 Each tenant has independent configuration for every component:
 
-```
+```text
 TenantConfig
 ├── STTConfig (provider, language, model)
 ├── LLMConfig (provider, model, base_url, temperature, system_prompt)
@@ -151,7 +152,7 @@ TenantConfig
 
 ### Conversation Flow
 
-```
+```text
 Widget connects → Room created → Agent joins
     │
     ▼
@@ -173,12 +174,12 @@ Session ends → Transcript saved
 
 Four application tables plus a migration tracker:
 
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `tenants` | Multi-tenant config | STT/LLM/TTS JSONB, widget settings, webhook_url, mcp_servers |
-| `conversations` | Session transcripts | tenant_id, visitor_id, transcript JSONB, duration, timestamps |
-| `leads` | Extracted contacts | tenant_id, conversation_id, name, email, phone, intent |
-| `visitor_memories` | Cross-session context | tenant_id, visitor_id (UNIQUE), summary, turn_count |
+| Table              | Purpose               | Key Columns                                                   |
+| ------------------ | --------------------- | ------------------------------------------------------------- |
+| `tenants`          | Multi-tenant config   | STT/LLM/TTS JSONB, widget settings, webhook_url, mcp_servers  |
+| `conversations`    | Session transcripts   | tenant_id, visitor_id, transcript JSONB, duration, timestamps |
+| `leads`            | Extracted contacts    | tenant_id, conversation_id, name, email, phone, intent        |
+| `visitor_memories` | Cross-session context | tenant_id, visitor_id (UNIQUE), summary, turn_count           |
 
 Migrations are plain SQL files in `migrations/`, applied automatically on server startup via `run_migrations()`.
 

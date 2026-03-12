@@ -4,13 +4,13 @@ This guide walks through setting up VoxAgent for local development and deploying
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Python | 3.12+ | [python.org](https://www.python.org/downloads/) |
-| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Node.js | 22+ | [nodejs.org](https://nodejs.org/) |
-| pnpm | 9+ | `corepack enable && corepack prepare pnpm@latest --activate` |
-| Docker | 24+ | [docker.com](https://www.docker.com/) |
+| Tool    | Version | Install                                                      |
+| ------- | ------- | ------------------------------------------------------------ |
+| Python  | 3.12+   | [python.org](https://www.python.org/downloads/)              |
+| uv      | latest  | `curl -LsSf https://astral.sh/uv/install.sh \| sh`           |
+| Node.js | 22+     | [nodejs.org](https://nodejs.org/)                            |
+| pnpm    | 9+      | `corepack enable && corepack prepare pnpm@latest --activate` |
+| Docker  | 24+     | [docker.com](https://www.docker.com/)                        |
 
 ## 1. Clone and Set Up
 
@@ -27,11 +27,11 @@ docker compose up -d
 
 This starts three services:
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| PostgreSQL 17 | 5432 | Database for tenants, conversations, leads |
-| LiveKit Server | 7880 | Real-time WebRTC audio routing |
-| Ollama | 11434 | Local LLM inference |
+| Service        | Port  | Purpose                                    |
+| -------------- | ----- | ------------------------------------------ |
+| PostgreSQL 17  | 5432  | Database for tenants, conversations, leads |
+| LiveKit Server | 7880  | Real-time WebRTC audio routing             |
+| Ollama         | 11434 | Local LLM inference                        |
 
 Wait for all services to be healthy:
 
@@ -70,24 +70,24 @@ The default values in `.env.example` work with the Docker Compose setup. For pro
 
 ### Required Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `LIVEKIT_URL` | LiveKit server WebSocket URL |
-| `LIVEKIT_API_KEY` | LiveKit API key |
-| `LIVEKIT_API_SECRET` | LiveKit API secret |
-| `SESSION_SECRET` | Secret for signing session cookies |
+| Variable             | Description                        |
+| -------------------- | ---------------------------------- |
+| `DATABASE_URL`       | PostgreSQL connection string       |
+| `LIVEKIT_URL`        | LiveKit server WebSocket URL       |
+| `LIVEKIT_API_KEY`    | LiveKit API key                    |
+| `LIVEKIT_API_SECRET` | LiveKit API secret                 |
+| `SESSION_SECRET`     | Secret for signing session cookies |
 
 ### Optional Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
-| `OPENAI_API_KEY` | — | Enables OpenAI as LLM/TTS provider |
-| `ELEVENLABS_API_KEY` | — | Enables ElevenLabs TTS |
-| `SERVER_HOST` | `0.0.0.0` | API server bind address |
-| `SERVER_PORT` | `8080` | API server port |
-| `LOG_LEVEL` | `INFO` | Logging level |
+| Variable             | Default                  | Description                        |
+| -------------------- | ------------------------ | ---------------------------------- |
+| `OLLAMA_BASE_URL`    | `http://localhost:11434` | Ollama endpoint                    |
+| `OPENAI_API_KEY`     | —                        | Enables OpenAI as LLM/TTS provider |
+| `ELEVENLABS_API_KEY` | —                        | Enables ElevenLabs TTS             |
+| `SERVER_HOST`        | `0.0.0.0`                | API server bind address            |
+| `SERVER_PORT`        | `8080`                   | API server port                    |
+| `LOG_LEVEL`          | `INFO`                   | Logging level                      |
 
 ## 5. Install Python Dependencies
 
@@ -159,10 +159,12 @@ Save the returned `id` — you'll need it for the widget and dashboard.
 Open `http://localhost:8080/dashboard/login` in your browser.
 
 Log in with:
+
 - **Tenant ID**: The UUID returned when you created the tenant
 - **Password**: The password you set (`changeme` in the example)
 
 From the dashboard you can:
+
 - View conversations and transcripts
 - Browse extracted leads (with CSV export)
 - See analytics (conversation volume, languages, top intents)
@@ -190,8 +192,8 @@ Add this to any HTML page:
 <script
   src="http://localhost:3001/widget.js"
   data-tenant-id="YOUR_TENANT_ID"
-  data-api-url="http://localhost:8080">
-</script>
+  data-api-url="http://localhost:8080"
+></script>
 ```
 
 ## Ingesting Knowledge
@@ -227,6 +229,7 @@ After ingestion, the voice agent automatically uses the knowledge base to answer
 ### LLM Providers
 
 **Ollama (default, local)**:
+
 ```json
 {
   "llm": {
@@ -239,6 +242,7 @@ After ingestion, the voice agent automatically uses the knowledge base to answer
 
 **OpenAI**:
 Set `OPENAI_API_KEY` in `.env`, then:
+
 ```json
 {
   "llm": {
@@ -252,6 +256,7 @@ Set `OPENAI_API_KEY` in `.env`, then:
 ### STT Providers
 
 **Whisper (default)**:
+
 ```json
 {
   "stt": {
@@ -263,6 +268,7 @@ Set `OPENAI_API_KEY` in `.env`, then:
 ```
 
 **Deepgram**:
+
 ```json
 {
   "stt": {
@@ -275,6 +281,7 @@ Set `OPENAI_API_KEY` in `.env`, then:
 ### TTS Providers
 
 **Qwen3 (default, local)**:
+
 ```json
 {
   "tts": {
@@ -287,6 +294,7 @@ Set `OPENAI_API_KEY` in `.env`, then:
 
 **ElevenLabs**:
 Set `ELEVENLABS_API_KEY` in `.env`, then:
+
 ```json
 {
   "tts": {
@@ -297,6 +305,7 @@ Set `ELEVENLABS_API_KEY` in `.env`, then:
 ```
 
 **Cartesia**:
+
 ```json
 {
   "tts": {

@@ -9,8 +9,9 @@ Base URL: `http://localhost:8080`
 Returns server status.
 
 **Response** `200`:
+
 ```json
-{"status": "ok"}
+{ "status": "ok" }
 ```
 
 ### `GET /metrics`
@@ -28,6 +29,7 @@ Prometheus-formatted metrics (conversations, leads, latency, etc.).
 Generates a LiveKit access token for a visitor to join a voice room.
 
 **Request body**:
+
 ```json
 {
   "tenant_id": "uuid"
@@ -35,6 +37,7 @@ Generates a LiveKit access token for a visitor to join a voice room.
 ```
 
 **Response** `200`:
+
 ```json
 {
   "token": "eyJ...",
@@ -57,6 +60,7 @@ All tenant endpoints are unauthenticated (intended for admin/provisioning use).
 Create a new tenant.
 
 **Request body**:
+
 ```json
 {
   "name": "Acme Corp",
@@ -84,7 +88,7 @@ Create a new tenant.
   "allowed_origins": ["https://acme.com"],
   "webhook_url": "https://hooks.zapier.com/...",
   "mcp_servers": [
-    {"name": "crm", "url": "http://crm:9000/mcp", "api_key": "key"}
+    { "name": "crm", "url": "http://crm:9000/mcp", "api_key": "key" }
   ]
 }
 ```
@@ -124,6 +128,7 @@ Delete a tenant.
 Public endpoint for the widget to fetch display configuration.
 
 **Response** `200`:
+
 ```json
 {
   "greeting": "Hello! How can I help?",
@@ -147,6 +152,7 @@ List extracted leads for a tenant.
 | `offset` | int | 0 | 0+ |
 
 **Response** `200`:
+
 ```json
 [
   {
@@ -186,6 +192,7 @@ Renders the login form.
 Form-based login.
 
 **Form fields**:
+
 - `tenant_id` — UUID of the tenant
 - `password` — Dashboard password
 
@@ -220,6 +227,7 @@ Table view of extracted leads with name, email, phone, intent, and timestamp.
 #### `GET /dashboard/{tenant_id}/analytics`
 
 Analytics dashboard with:
+
 - Total conversations and leads
 - Average conversation duration
 - Conversations by language
@@ -243,6 +251,7 @@ Upload a file (PDF, DOCX, TXT) to the knowledge base.
 Crawl a website and add it to the knowledge base.
 
 **Form fields**:
+
 - `url` — Website URL to crawl
 - `depth` — Crawl depth (default 3)
 - `max_pages` — Maximum pages to crawl (default 100)
@@ -315,8 +324,8 @@ When handoff is triggered, VoxAgent sends a POST to the configured handoff webho
   "conversation_id": "uuid",
   "reason": "explicit_request | repeated_failure | keyword_match",
   "transcript": [
-    {"role": "user", "content": "I want to speak to a human"},
-    {"role": "assistant", "content": "Let me connect you..."}
+    { "role": "user", "content": "I want to speak to a human" },
+    { "role": "assistant", "content": "Let me connect you..." }
   ],
   "triggered_at": "2024-01-15T10:30:00+00:00"
 }
@@ -334,21 +343,21 @@ All error responses follow this format:
 }
 ```
 
-| Status | Meaning |
-|--------|---------|
-| `400` | Bad request (invalid input) |
-| `401` | Not authenticated |
-| `403` | Forbidden (wrong tenant) |
-| `404` | Resource not found |
-| `422` | Validation error (missing/invalid fields) |
-| `429` | Rate limited |
-| `500` | Internal server error |
+| Status | Meaning                                   |
+| ------ | ----------------------------------------- |
+| `400`  | Bad request (invalid input)               |
+| `401`  | Not authenticated                         |
+| `403`  | Forbidden (wrong tenant)                  |
+| `404`  | Resource not found                        |
+| `422`  | Validation error (missing/invalid fields) |
+| `429`  | Rate limited                              |
+| `500`  | Internal server error                     |
 
 ### Rate Limits
 
-| Scope | Limit |
-|-------|-------|
-| Per IP | 30 requests / 60 seconds |
+| Scope      | Limit                     |
+| ---------- | ------------------------- |
+| Per IP     | 30 requests / 60 seconds  |
 | Per tenant | 100 requests / 60 seconds |
 
 Exceeding the limit returns `429 Too Many Requests`.

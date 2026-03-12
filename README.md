@@ -85,10 +85,11 @@ Access the dashboard at `http://localhost:8080/dashboard/login`.
 Add the widget to any page with:
 
 ```html
-<script src="http://localhost:3001/widget.js"
-        data-tenant-id="YOUR_TENANT_ID"
-        data-api-url="http://localhost:8080">
-</script>
+<script
+  src="http://localhost:3001/widget.js"
+  data-tenant-id="YOUR_TENANT_ID"
+  data-api-url="http://localhost:8080"
+></script>
 ```
 
 ## Ingest Knowledge
@@ -151,19 +152,19 @@ tests/             # Unit, integration, and security tests
 
 All configuration is via environment variables. See [`.env.example`](.env.example) for the full list.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `LIVEKIT_URL` | Yes | — | LiveKit server WebSocket URL |
-| `LIVEKIT_API_KEY` | Yes | — | LiveKit API key |
-| `LIVEKIT_API_SECRET` | Yes | — | LiveKit API secret |
-| `SESSION_SECRET` | Yes | — | Secret for signing dashboard session cookies |
-| `OLLAMA_BASE_URL` | No | `http://localhost:11434` | Ollama inference endpoint |
-| `OPENAI_API_KEY` | No | — | OpenAI API key (enables OpenAI provider) |
-| `ELEVENLABS_API_KEY` | No | — | ElevenLabs TTS API key |
-| `SERVER_HOST` | No | `0.0.0.0` | API server listen address |
-| `SERVER_PORT` | No | `8080` | API server listen port |
-| `LOG_LEVEL` | No | `INFO` | Logging verbosity |
+| Variable             | Required | Default                  | Description                                  |
+| -------------------- | -------- | ------------------------ | -------------------------------------------- |
+| `DATABASE_URL`       | Yes      | —                        | PostgreSQL connection string                 |
+| `LIVEKIT_URL`        | Yes      | —                        | LiveKit server WebSocket URL                 |
+| `LIVEKIT_API_KEY`    | Yes      | —                        | LiveKit API key                              |
+| `LIVEKIT_API_SECRET` | Yes      | —                        | LiveKit API secret                           |
+| `SESSION_SECRET`     | Yes      | —                        | Secret for signing dashboard session cookies |
+| `OLLAMA_BASE_URL`    | No       | `http://localhost:11434` | Ollama inference endpoint                    |
+| `OPENAI_API_KEY`     | No       | —                        | OpenAI API key (enables OpenAI provider)     |
+| `ELEVENLABS_API_KEY` | No       | —                        | ElevenLabs TTS API key                       |
+| `SERVER_HOST`        | No       | `0.0.0.0`                | API server listen address                    |
+| `SERVER_PORT`        | No       | `8080`                   | API server listen port                       |
+| `LOG_LEVEL`          | No       | `INFO`                   | Logging verbosity                            |
 
 ## Docker Deployment
 
@@ -201,11 +202,11 @@ See [docs/api-reference.md](docs/api-reference.md) for the complete endpoint doc
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/architecture.md) | System design, component interactions, data flow |
+| Document                                   | Description                                      |
+| ------------------------------------------ | ------------------------------------------------ |
+| [Architecture](docs/architecture.md)       | System design, component interactions, data flow |
 | [Getting Started](docs/getting-started.md) | Detailed setup guide with provider configuration |
-| [API Reference](docs/api-reference.md) | All REST and dashboard endpoints |
+| [API Reference](docs/api-reference.md)     | All REST and dashboard endpoints                 |
 
 ## License
 
