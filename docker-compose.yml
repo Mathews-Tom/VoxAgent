@@ -1,0 +1,53 @@
+networks:
+  voxagent:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ollama_data:
+
+services:
+  postgres:
+    image: postgres:17
+    networks:
+      - voxagent
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: voxagent
+      POSTGRES_PASSWORD: voxagent
+      POSTGRES_DB: voxagent
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxagent -d voxagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  livekit:
+    image: livekit/livekit-server:latest
+    networks:
+      - voxagent
+    ports:
+      - "7880:7880"
+    command: --dev
+    environment:
+      LIVEKIT_KEYS: "devkey: devsecret"
+
+  ollama:
+    image: ollama/ollama:latest
+    networks:
+      - voxagent
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
