@@ -36,6 +36,7 @@ class Config:
         "ollama_base_url",
         "openai_api_key",
         "elevenlabs_api_key",
+        "session_secret",
         "server_host",
         "server_port",
         "log_level",
@@ -50,6 +51,7 @@ class Config:
         self.ollama_base_url: str = _env("OLLAMA_BASE_URL", "http://localhost:11434")
         self.openai_api_key: str | None = os.environ.get("OPENAI_API_KEY")
         self.elevenlabs_api_key: str | None = os.environ.get("ELEVENLABS_API_KEY")
+        self.session_secret: str = _require_env("SESSION_SECRET")
 
         self.server_host: str = _env("SERVER_HOST", "0.0.0.0")
         self.server_port: int = _env_int("SERVER_PORT", 8080)
