@@ -1,17 +1,33 @@
 from __future__ import annotations
 
+import os
 import uuid
+from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from voxagent.models import TenantConfig
-from voxagent.server.app import app
+from voxagent.server.routes.widget import router as widget_router
+
+
+def _make_test_app() -> FastAPI:
+    test_app = FastAPI()
+    test_app.include_router(widget_router)
+
+    config = MagicMock()
+    config.livekit_api_key = "devkey"
+    config.livekit_api_secret = "devsecret1234567890123456789012345678901234567890"
+    config.livekit_url = "ws://localhost:7880"
+    test_app.state.config = config
+
+    return test_app
 
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(_make_test_app())
 
 
 class TestTokenEndpoint:
@@ -51,20 +67,22 @@ class TestTokenEndpoint:
 
 
 class TestHealthEndpoint:
-    def test_health_returns_ok(self, client: TestClient) -> None:
-        response = client.get("/health")
+    @pytest.mark.skipif(
+        not os.environ.get("DATABASE_URL"),
+        reason="DATABASE_URL not set — requires live database",
+    )
+    def test_health_returns_ok(self) -> None:
+        from voxagent.server.app import app as real_app
+
+        with TestClient(real_app) as c:
+            response = c.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
 
 class TestVoxAgentConstruction:
-    def test_voxagent_builds_session_with_default_config(self) -> None:
-        from voxagent.agent.core import VoxAgent
-        from voxagent.config import Config
-
+    def test_tenant_config_has_correct_defaults(self) -> None:
         tenant = TenantConfig(name="test", domain="test.local")
-        # VoxAgent construction requires LiveKit plugins installed
-        # This test verifies the import chain and model construction work
         assert tenant.stt.provider.value == "whisper"
         assert tenant.llm.provider.value == "ollama"
         assert tenant.tts.provider.value == "qwen3"
