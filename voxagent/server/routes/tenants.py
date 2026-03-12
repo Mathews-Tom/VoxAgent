@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from voxagent.models import LLMConfig, STTConfig, TTSConfig, TenantConfig
+from voxagent.models import LLMConfig, MCPServerConfig, STTConfig, TTSConfig, TenantConfig
 from voxagent.queries import (
     create_tenant,
     delete_tenant,
@@ -30,6 +30,8 @@ class CreateTenantRequest(BaseModel):
     widget_color: str = "#6366f1"
     widget_position: str = "bottom-right"
     allowed_origins: list[str] = []
+    webhook_url: str | None = None
+    mcp_servers: list[MCPServerConfig] = []
 
 
 class UpdateTenantRequest(BaseModel):
@@ -43,6 +45,8 @@ class UpdateTenantRequest(BaseModel):
     widget_color: str | None = None
     widget_position: str | None = None
     allowed_origins: list[str] | None = None
+    webhook_url: str | None = None
+    mcp_servers: list[MCPServerConfig] | None = None
 
 
 class TenantResponse(BaseModel):
@@ -56,6 +60,8 @@ class TenantResponse(BaseModel):
     widget_color: str
     widget_position: str
     allowed_origins: list[str]
+    webhook_url: str | None
+    mcp_servers: list[MCPServerConfig]
     created_at: datetime
 
 
@@ -77,6 +83,8 @@ def _tenant_to_response(tenant: TenantConfig) -> TenantResponse:
         widget_color=tenant.widget_color,
         widget_position=tenant.widget_position,
         allowed_origins=tenant.allowed_origins,
+        webhook_url=tenant.webhook_url,
+        mcp_servers=tenant.mcp_servers,
         created_at=tenant.created_at,
     )
 
@@ -99,6 +107,8 @@ async def create_tenant_route(body: CreateTenantRequest, request: Request) -> Te
         widget_color=body.widget_color,
         widget_position=body.widget_position,
         allowed_origins=body.allowed_origins,
+        webhook_url=body.webhook_url,
+        mcp_servers=body.mcp_servers,
     )
     created = await create_tenant(pool, tenant)
     return _tenant_to_response(created)
@@ -140,6 +150,8 @@ async def update_tenant_route(
         widget_color=body.widget_color if body.widget_color is not None else existing.widget_color,
         widget_position=body.widget_position if body.widget_position is not None else existing.widget_position,
         allowed_origins=body.allowed_origins if body.allowed_origins is not None else existing.allowed_origins,
+        webhook_url=body.webhook_url if body.webhook_url is not None else existing.webhook_url,
+        mcp_servers=body.mcp_servers if body.mcp_servers is not None else existing.mcp_servers,
         created_at=existing.created_at,
     )
     result = await update_tenant(pool, updated)
