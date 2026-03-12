@@ -1,0 +1,45 @@
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+  <div class="mb-4 pb-4 border-b border-gray-100">
+    <h2 class="text-base font-semibold text-gray-900">Transcript</h2>
+    <p class="text-xs text-gray-400 mt-0.5 font-mono">{{ conversation.id }}</p>
+  </div>
+
+  <div class="space-y-4 max-h-96 overflow-y-auto">
+    {% if conversation.transcript %}
+      {% for turn in conversation.transcript %}
+        {% if turn.role == 'user' %}
+        <div class="flex justify-end">
+          <div class="max-w-sm px-4 py-2.5 rounded-2xl rounded-tr-sm bg-indigo-600 text-white text-sm leading-relaxed">
+            {{ turn.content }}
+          </div>
+        </div>
+        {% else %}
+        <div class="flex justify-start">
+          <div class="max-w-sm px-4 py-2.5 rounded-2xl rounded-tl-sm bg-gray-100 text-gray-800 text-sm leading-relaxed">
+            {{ turn.content }}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <p class="text-sm text-gray-400 text-center py-8">No transcript available.</p>
+    {% endif %}
+  </div>
+
+  <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-3 gap-4 text-sm">
+    <div>
+      <span class="text-xs text-gray-400 block">Visitor</span>
+      <span class="text-gray-700 font-mono text-xs">{{ conversation.visitor_id }}</span>
+    </div>
+    <div>
+      <span class="text-xs text-gray-400 block">Language</span>
+      <span class="text-gray-700">{{ conversation.language }}</span>
+    </div>
+    <div>
+      <span class="text-xs text-gray-400 block">Duration</span>
+      <span class="text-gray-700">
+        {% if conversation.duration_seconds %}{{ "%.0f" | format(conversation.duration_seconds) }}s{% else %}—{% endif %}
+      </span>
+    </div>
+  </div>
+</div>

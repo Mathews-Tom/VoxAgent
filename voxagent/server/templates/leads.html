@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Leads{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">Leads</h1>
+    <p class="text-sm text-gray-500 mt-1">Contacts captured from conversations</p>
+  </div>
+  <a href="/api/tenants/{{ tenant_id }}/leads/export"
+     class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors">
+    Export CSV
+  </a>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+  <table class="min-w-full divide-y divide-gray-200">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Intent</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Captured</th>
+      </tr>
+    </thead>
+    <tbody class="bg-white divide-y divide-gray-100">
+      {% for lead in leads %}
+      <tr class="hover:bg-gray-50 transition-colors">
+        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ lead.name or '—' }}</td>
+        <td class="px-6 py-4 text-sm text-gray-600">
+          {% if lead.email %}
+            <a href="mailto:{{ lead.email }}" class="text-indigo-600 hover:underline">{{ lead.email }}</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-600">{{ lead.phone or '—' }}</td>
+        <td class="px-6 py-4 text-sm text-gray-600">
+          {% if lead.intent %}
+            <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium">{{ lead.intent }}</span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-500">{{ lead.extracted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="px-6 py-12 text-center text-sm text-gray-400">
+          No leads captured yet.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if offset > 0 or leads | length == limit %}
+<div class="mt-4 flex items-center gap-3">
+  {% if offset > 0 %}
+  <a href="/dashboard/{{ tenant_id }}/leads?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}"
+     class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+    Previous
+  </a>
+  {% endif %}
+  {% if leads | length == limit %}
+  <a href="/dashboard/{{ tenant_id }}/leads?offset={{ offset + limit }}&limit={{ limit }}"
+     class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+    Next
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

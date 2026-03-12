@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Widget Config{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-gray-900">Widget Configuration</h1>
+  <p class="text-sm text-gray-500 mt-1">Customize the embeddable voice widget</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- Config Form -->
+  <div class="space-y-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-base font-semibold text-gray-900 mb-5">Appearance & Behavior</h2>
+
+      {% if save_success %}
+      <div class="mb-5 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
+        Settings saved successfully.
+      </div>
+      {% endif %}
+      {% if save_error %}
+      <div class="mb-5 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+        {{ save_error }}
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/dashboard/{{ tenant_id }}/widget-config" class="space-y-5" id="widget-form">
+        <div>
+          <label for="widget_color" class="block text-sm font-medium text-gray-700 mb-1">Widget Color</label>
+          <div class="flex items-center gap-3">
+            <input
+              type="color"
+              id="widget_color"
+              name="widget_color"
+              value="{{ tenant.widget_color }}"
+              class="h-10 w-16 border border-gray-300 rounded-md cursor-pointer"
+              oninput="document.getElementById('color-preview').style.backgroundColor=this.value; document.getElementById('color-hex').textContent=this.value;"
+            />
+            <span id="color-hex" class="text-sm font-mono text-gray-600">{{ tenant.widget_color }}</span>
+          </div>
+        </div>
+
+        <div>
+          <label for="greeting" class="block text-sm font-medium text-gray-700 mb-1">Greeting Message</label>
+          <input
+            type="text"
+            id="greeting"
+            name="greeting"
+            value="{{ tenant.greeting }}"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+
+        <div>
+          <label for="widget_position" class="block text-sm font-medium text-gray-700 mb-1">Position</label>
+          <select
+            id="widget_position"
+            name="widget_position"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="bottom-right" {% if tenant.widget_position == 'bottom-right' %}selected{% endif %}>Bottom Right</option>
+            <option value="bottom-left" {% if tenant.widget_position == 'bottom-left' %}selected{% endif %}>Bottom Left</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Allowed Origins</label>
+          <div id="origins-list" class="space-y-2 mb-2">
+            {% for origin in tenant.allowed_origins %}
+            <div class="flex items-center gap-2">
+              <input
+                type="text"
+                name="allowed_origins"
+                value="{{ origin }}"
+                class="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+              <button type="button" onclick="this.closest('div').remove()"
+                      class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">
+                &times;
+              </button>
+            </div>
+            {% endfor %}
+          </div>
+          <button
+            type="button"
+            onclick="addOriginRow()"
+            class="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            + Add origin
+          </button>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors"
+        >
+          Save Settings
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Embed Snippet Preview -->
+  <div class="space-y-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-base font-semibold text-gray-900 mb-4">Embed Snippet</h2>
+      <p class="text-sm text-gray-500 mb-4">Paste this into your website's <code class="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">&lt;body&gt;</code> tag.</p>
+      <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs font-mono overflow-x-auto leading-relaxed whitespace-pre-wrap break-all"><code id="snippet-code">&lt;script
+  src="{{ request.base_url }}widget.js"
+  data-tenant-id="{{ tenant_id }}"
+  data-color="{{ tenant.widget_color }}"
+  data-position="{{ tenant.widget_position }}"
+  defer
+&gt;&lt;/script&gt;</code></pre>
+      <button
+        type="button"
+        onclick="copySnippet()"
+        class="mt-3 px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+      >
+        Copy to Clipboard
+      </button>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-base font-semibold text-gray-900 mb-4">Preview</h2>
+      <div class="flex items-center justify-center h-32 bg-gray-50 rounded-lg border border-gray-200 relative">
+        <span class="text-xs text-gray-400">Widget preview</span>
+        <div id="color-preview"
+             style="background-color: {{ tenant.widget_color }};"
+             class="absolute bottom-3 right-3 w-12 h-12 rounded-full shadow-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14H11v-4h2v4zm0-6H11V8h2v2z"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function addOriginRow() {
+  const list = document.getElementById('origins-list');
+  const div = document.createElement('div');
+  div.className = 'flex items-center gap-2';
+  div.innerHTML = `
+    <input type="text" name="allowed_origins" placeholder="https://example.com"
+           class="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+    <button type="button" onclick="this.closest('div').remove()"
+            class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">&times;</button>
+  `;
+  list.appendChild(div);
+}
+
+function copySnippet() {
+  const text = document.getElementById('snippet-code').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+  });
+}
+</script>
+{% endblock %}
