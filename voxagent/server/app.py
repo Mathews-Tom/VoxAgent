@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from voxagent.config import load_config
 from voxagent.db import close_pool, init_pool, run_migrations
+from voxagent.server.routes.widget import router as widget_router
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -38,6 +39,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(widget_router)
 
 
 @app.get("/health")
