@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import asyncpg
 from livekit import rtc
-from livekit.agents import Agent, AgentSession, RoomInputOptions
+from livekit.agents import Agent, AgentSession, RoomInputOptions, llm
 from livekit.plugins import silero
 
 from voxagent.config import Config
@@ -33,9 +33,13 @@ class VoxAgent:
         tenant_config: TenantConfig,
         app_config: Config,
         knowledge_engine: KnowledgeEngine | None = None,
+        visitor_memory_summary: str | None = None,
+        mcp_tools: list[llm.FunctionTool] | None = None,
     ) -> None:
         self._tenant_config = tenant_config
         self._knowledge_engine = knowledge_engine
+        self._visitor_memory_summary = visitor_memory_summary
+        self._mcp_tools = mcp_tools or []
         self._stt = create_stt(tenant_config.stt, app_config)
         self._llm = create_llm(tenant_config.llm, app_config)
         self._tts = create_tts(tenant_config.tts, app_config)
@@ -51,13 +55,21 @@ class VoxAgent:
         )
 
     def build_agent(self) -> Agent:
-        tools = []
+        tools: list[llm.FunctionTool] = []
         if self._knowledge_engine is not None:
             from voxagent.agent.tools import create_knowledge_tool
 
             tools.append(create_knowledge_tool(self._knowledge_engine))
 
-        instructions = f"{_LANGUAGE_INSTRUCTION}\n\n{self._tenant_config.llm.system_prompt}"
+        tools.extend(self._mcp_tools)
+
+        parts = [_LANGUAGE_INSTRUCTION]
+        if self._visitor_memory_summary:
+            parts.append(
+                f"VISITOR CONTEXT (from previous conversations):\n{self._visitor_memory_summary}"
+            )
+        parts.append(self._tenant_config.llm.system_prompt)
+        instructions = "\n\n".join(parts)
 
         return Agent(
             instructions=instructions,

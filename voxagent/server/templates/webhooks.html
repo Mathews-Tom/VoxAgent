@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Webhooks{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-bold text-gray-900 mb-6">Webhook Configuration</h1>
+
+  {% if save_success %}
+  <div class="mb-4 rounded-md bg-green-50 p-4">
+    <p class="text-sm font-medium text-green-800">Webhook settings saved.</p>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/dashboard/{{ tenant_id }}/webhooks" class="space-y-6">
+
+    <div>
+      <label for="webhook_url" class="block text-sm font-medium text-gray-700 mb-1">
+        Lead Webhook URL
+      </label>
+      <input type="url"
+             id="webhook_url"
+             name="webhook_url"
+             value="{{ webhook_url or '' }}"
+             placeholder="https://hooks.zapier.com/hooks/catch/..."
+             class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2 border">
+      <p class="mt-1 text-xs text-gray-500">
+        When a lead is extracted from a conversation, a POST request with the lead data will be sent to this URL.
+      </p>
+    </div>
+
+    <div class="bg-gray-50 rounded-lg p-4">
+      <h3 class="text-sm font-medium text-gray-700 mb-2">Payload Format</h3>
+      <pre class="text-xs text-gray-600 bg-white rounded p-3 border overflow-x-auto">{
+  "event": "lead.created",
+  "lead": {
+    "id": "uuid",
+    "tenant_id": "uuid",
+    "conversation_id": "uuid",
+    "name": "string | null",
+    "email": "string | null",
+    "phone": "string | null",
+    "intent": "string | null",
+    "summary": "string | null",
+    "extracted_at": "ISO 8601"
+  },
+  "dispatched_at": "ISO 8601"
+}</pre>
+    </div>
+
+    <div class="flex justify-end">
+      <button type="submit"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+        Save
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

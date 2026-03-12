@@ -49,6 +49,12 @@ class TTSConfig(BaseModel):
     clone_transcript: str | None = None
 
 
+class MCPServerConfig(BaseModel):
+    name: str
+    url: str
+    api_key: str | None = None
+
+
 class TenantConfig(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     name: str
@@ -61,6 +67,8 @@ class TenantConfig(BaseModel):
     widget_color: str = "#6366f1"
     widget_position: str = "bottom-right"
     allowed_origins: list[str] = Field(default_factory=list)
+    webhook_url: str | None = None
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -86,3 +94,12 @@ class LeadRecord(BaseModel):
     intent: str | None = None
     summary: str | None = None
     extracted_at: datetime = Field(default_factory=_utcnow)
+
+
+class VisitorMemory(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    tenant_id: uuid.UUID
+    visitor_id: str
+    summary: str
+    turn_count: int = 0
+    updated_at: datetime = Field(default_factory=_utcnow)
