@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
+
+CONVERSATIONS_TOTAL = Counter(
+    "voxagent_conversations_total",
+    "Total conversations processed",
+    ["tenant_id"],
+)
+
+CONVERSATION_DURATION = Histogram(
+    "voxagent_conversation_duration_seconds",
+    "Conversation duration in seconds",
+    ["tenant_id"],
+    buckets=[10, 30, 60, 120, 300, 600, 1800],
+)
+
+LEADS_EXTRACTED = Counter(
+    "voxagent_leads_extracted_total",
+    "Total leads extracted from conversations",
+    ["tenant_id"],
+)
+
+ACTIVE_SESSIONS = Gauge(
+    "voxagent_active_sessions",
+    "Currently active voice sessions",
+    ["tenant_id"],
+)
+
+LLM_REQUESTS = Counter(
+    "voxagent_llm_requests_total",
+    "Total LLM API requests",
+    ["tenant_id", "provider"],
+)
+
+LLM_LATENCY = Histogram(
+    "voxagent_llm_latency_seconds",
+    "LLM request latency",
+    ["tenant_id", "provider"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
+
+STT_REQUESTS = Counter(
+    "voxagent_stt_requests_total",
+    "Total STT requests",
+    ["tenant_id", "provider"],
+)
+
+TTS_REQUESTS = Counter(
+    "voxagent_tts_requests_total",
+    "Total TTS requests",
+    ["tenant_id", "provider"],
+)
+
+HANDOFF_TRIGGERS = Counter(
+    "voxagent_handoff_triggers_total",
+    "Total handoff triggers",
+    ["tenant_id", "reason"],
+)
+
+
+def metrics_response() -> tuple[bytes, str]:
+    """Return (body, content_type) for the /metrics endpoint."""
+    return generate_latest(), CONTENT_TYPE_LATEST
