@@ -82,6 +82,12 @@ class KnowledgeEngine:
         index.add(embeddings)
         self._faiss_index = index
 
+        # Load existing hash map before persisting so we don't overwrite it
+        hash_map_path = self._path(_HASH_MAP_FILE)
+        if os.path.exists(hash_map_path):
+            with open(hash_map_path, encoding="utf-8") as fh:
+                self._hash_map = json.load(fh)
+
         self._persist()
 
     def _persist(self) -> None:
@@ -138,19 +144,22 @@ class KnowledgeEngine:
         if self._model is None:
             raise RuntimeError("Model not loaded. Call build_index() or load_index() first.")
 
-        fetch_k = top_k * 2
+        n_chunks = len(self._chunks)
+        fetch_k = min(top_k * 2, n_chunks)
 
         # BM25 ranking
         bm25_scores = self._bm25.get_scores(_tokenize(query))
         bm25_ranked: list[int] = sorted(
-            range(len(self._chunks)), key=lambda i: bm25_scores[i], reverse=True
+            range(n_chunks), key=lambda i: bm25_scores[i], reverse=True
         )[:fetch_k]
 
-        # FAISS ranking
+        # FAISS ranking (filter -1 padding from results with fewer vectors than k)
         query_vec = self._model.encode([query], convert_to_numpy=True, show_progress_bar=False)
         query_vec = _normalize_vectors(query_vec)
         _, faiss_indices = self._faiss_index.search(query_vec, fetch_k)
-        faiss_ranked: list[int] = faiss_indices[0].tolist()
+        faiss_ranked: list[int] = [
+            int(idx) for idx in faiss_indices[0] if idx >= 0
+        ]
 
         # Reciprocal Rank Fusion
         rrf_scores: dict[int, float] = {}
