@@ -10,6 +10,10 @@ from fastapi.templating import Jinja2Templates
 
 from voxagent.config import load_config
 from voxagent.db import close_pool, init_pool, run_migrations
+from voxagent.server.auth import router as auth_router
+from voxagent.server.routes.conversations import router as conversations_router
+from voxagent.server.routes.dashboard import router as dashboard_router
+from voxagent.server.routes.knowledge import router as knowledge_router
 from voxagent.server.routes.leads import router as leads_router
 from voxagent.server.routes.tenants import router as tenants_router
 from voxagent.server.routes.widget import router as widget_router
@@ -42,6 +46,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+app.include_router(conversations_router)
+app.include_router(dashboard_router)
+app.include_router(knowledge_router)
 app.include_router(leads_router)
 app.include_router(tenants_router)
 app.include_router(widget_router)
