@@ -1,0 +1,66 @@
+[project]
+name = "voxagent"
+version = "0.1.0"
+description = "Multi-tenant voice AI agent platform powered by LiveKit"
+requires-python = ">=3.12"
+dependencies = [
+    "livekit-agents>=1.0",
+    "livekit-plugins-silero>=1.0",
+    "livekit-plugins-openai>=1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "asyncpg>=0.30",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "click>=8.1",
+    "python-multipart>=0.0.18",
+]
+
+[project.optional-dependencies]
+knowledge = [
+    "faiss-cpu>=1.9",
+    "rank-bm25>=0.2",
+    "sentence-transformers>=3.4",
+    "readability-lxml>=0.8",
+    "lxml[html_clean]>=5.3",
+]
+tts-qwen = [
+    "qwen-tts>=0.1",
+    "torch>=2.5",
+    "numpy>=2.0",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.9",
+    "mypy>=1.14",
+]
+
+[project.scripts]
+voxagent = "voxagent.cli.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests requiring external services",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
