@@ -9,13 +9,16 @@ from voxagent.models import (
     ConversationRecord,
     LeadRecord,
     LLMConfig,
+    MCPServerConfig,
     STTConfig,
     TenantConfig,
     TTSConfig,
+    VisitorMemory,
 )
 
 
 def _row_to_tenant(row: asyncpg.Record) -> TenantConfig:
+    mcp_raw = json.loads(row["mcp_servers"]) if row["mcp_servers"] else []
     return TenantConfig(
         id=row["id"],
         name=row["name"],
@@ -28,6 +31,8 @@ def _row_to_tenant(row: asyncpg.Record) -> TenantConfig:
         widget_color=row["widget_color"],
         widget_position=row["widget_position"],
         allowed_origins=json.loads(row["allowed_origins"]) if row["allowed_origins"] else [],
+        webhook_url=row["webhook_url"],
+        mcp_servers=[MCPServerConfig.model_validate(s) for s in mcp_raw],
         created_at=row["created_at"],
     )
 
@@ -59,8 +64,8 @@ async def create_tenant(pool: asyncpg.Pool, tenant: TenantConfig) -> TenantConfi
         """
         INSERT INTO tenants (name, domain, password_hash, stt_config, llm_config,
                              tts_config, greeting, widget_color, widget_position,
-                             allowed_origins)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                             allowed_origins, webhook_url, mcp_servers)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *
         """,
         tenant.name,
@@ -73,6 +78,8 @@ async def create_tenant(pool: asyncpg.Pool, tenant: TenantConfig) -> TenantConfi
         tenant.widget_color,
         tenant.widget_position,
         json.dumps(tenant.allowed_origins),
+        tenant.webhook_url,
+        json.dumps([s.model_dump() for s in tenant.mcp_servers]),
     )
     return _row_to_tenant(row)
 
@@ -83,7 +90,8 @@ async def update_tenant(pool: asyncpg.Pool, tenant: TenantConfig) -> TenantConfi
         UPDATE tenants
         SET name = $2, domain = $3, password_hash = $4, stt_config = $5,
             llm_config = $6, tts_config = $7, greeting = $8, widget_color = $9,
-            widget_position = $10, allowed_origins = $11
+            widget_position = $10, allowed_origins = $11, webhook_url = $12,
+            mcp_servers = $13
         WHERE id = $1
         RETURNING *
         """,
@@ -98,6 +106,8 @@ async def update_tenant(pool: asyncpg.Pool, tenant: TenantConfig) -> TenantConfi
         tenant.widget_color,
         tenant.widget_position,
         json.dumps(tenant.allowed_origins),
+        tenant.webhook_url,
+        json.dumps([s.model_dump() for s in tenant.mcp_servers]),
     )
     if row is None:
         msg = f"Tenant {tenant.id} not found"
@@ -261,3 +271,55 @@ async def list_leads(
         )
         for r in rows
     ]
+
+
+# ── Visitor Memory ──────────────────────────────────────────────────────────
+
+
+async def get_visitor_memory(
+    pool: asyncpg.Pool,
+    tenant_id: uuid.UUID,
+    visitor_id: str,
+) -> VisitorMemory | None:
+    row = await pool.fetchrow(
+        "SELECT * FROM visitor_memories WHERE tenant_id = $1 AND visitor_id = $2",
+        tenant_id,
+        visitor_id,
+    )
+    if row is None:
+        return None
+    return VisitorMemory(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        visitor_id=row["visitor_id"],
+        summary=row["summary"],
+        turn_count=row["turn_count"],
+        updated_at=row["updated_at"],
+    )
+
+
+async def upsert_visitor_memory(
+    pool: asyncpg.Pool,
+    memory: VisitorMemory,
+) -> VisitorMemory:
+    row = await pool.fetchrow(
+        """
+        INSERT INTO visitor_memories (tenant_id, visitor_id, summary, turn_count, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (tenant_id, visitor_id)
+        DO UPDATE SET summary = $3, turn_count = $4, updated_at = NOW()
+        RETURNING *
+        """,
+        memory.tenant_id,
+        memory.visitor_id,
+        memory.summary,
+        memory.turn_count,
+    )
+    return VisitorMemory(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        visitor_id=row["visitor_id"],
+        summary=row["summary"],
+        turn_count=row["turn_count"],
+        updated_at=row["updated_at"],
+    )
