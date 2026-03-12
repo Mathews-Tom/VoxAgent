@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import VoiceSession from "./VoiceSession";
 
@@ -9,15 +9,41 @@ interface TokenResponse {
   roomName: string;
 }
 
+interface TenantConfig {
+  greeting: string;
+  widget_color: string;
+  widget_position: string;
+}
+
 export default function VoiceWidget() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
+  const [tenantConfig, setTenantConfig] = useState<TenantConfig | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
   const livekitUrl =
     process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "ws://localhost:7880";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tenant = params.get("tenant") ?? "";
+
+    fetch(`${apiUrl}/api/tenants/${tenant}/config`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Tenant config fetch failed: ${res.status}`);
+        }
+        return res.json() as Promise<TenantConfig>;
+      })
+      .then((config) => {
+        setTenantConfig(config);
+      })
+      .catch((err: unknown) => {
+        throw err;
+      });
+  }, [apiUrl]);
 
   const connect = useCallback(async () => {
     setConnecting(true);
@@ -40,7 +66,7 @@ export default function VoiceWidget() {
       setRoomName(data.roomName);
       setConnected(true);
     } catch (err) {
-      console.error("[VoiceWidget] connect error:", err);
+      throw err;
     } finally {
       setConnecting(false);
     }
@@ -86,17 +112,22 @@ export default function VoiceWidget() {
       <button
         onClick={handleClick}
         disabled={connecting}
+        title={tenantConfig?.greeting}
         aria-label={connected ? "Disconnect voice chat" : "Start voice chat"}
         style={{
           position: "fixed",
           bottom: "16px",
-          right: "16px",
+          ...(tenantConfig?.widget_position === "bottom-left"
+            ? { left: "16px" }
+            : { right: "16px" }),
           width: `${buttonSize}px`,
           height: `${buttonSize}px`,
           borderRadius: "50%",
           border: "none",
           cursor: connecting ? "wait" : "pointer",
-          backgroundColor: connected ? "#ef4444" : "#3b82f6",
+          backgroundColor: connected
+            ? "#ef4444"
+            : (tenantConfig?.widget_color ?? "#3b82f6"),
           color: "#fff",
           fontSize: "24px",
           display: "flex",
@@ -108,7 +139,22 @@ export default function VoiceWidget() {
           animation: connected ? "pulse 2s infinite" : "none",
         }}
       >
-        {connecting ? "…" : connected ? "✕" : "🎙"}
+        {connecting ? (
+          "\u2026"
+        ) : connected ? (
+          "\u2715"
+        ) : (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V20H9v2h6v-2h-2v-2.08A7 7 0 0 0 19 11h-2z" />
+          </svg>
+        )}
       </button>
 
       <style>{`
