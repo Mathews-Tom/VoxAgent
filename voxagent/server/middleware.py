@@ -56,8 +56,8 @@ class RateLimitMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
-        self._ip_limiter = RateLimiter(limit=30, window_seconds=60)
-        self._tenant_limiter = RateLimiter(limit=100, window_seconds=60)
+        self._ip_limiter = RateLimiter(limit=120, window_seconds=60)
+        self._tenant_limiter = RateLimiter(limit=300, window_seconds=60)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
