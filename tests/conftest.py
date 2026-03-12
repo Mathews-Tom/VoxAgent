@@ -57,6 +57,7 @@ def app_config() -> Config:
         "LIVEKIT_API_KEY": "test-api-key",
         "LIVEKIT_API_SECRET": "test-api-secret",
         "OLLAMA_BASE_URL": "http://localhost:11434",
+        "SESSION_SECRET": "test-session-secret-for-testing",
         "SERVER_HOST": "127.0.0.1",
         "SERVER_PORT": "8000",
         "LOG_LEVEL": "DEBUG",
