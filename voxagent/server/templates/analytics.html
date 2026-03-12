@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-gray-900">Analytics</h1>
+  <p class="text-sm text-gray-500 mt-1">Aggregated metrics — last 30 days and all time</p>
+</div>
+
+<!-- Stats cards -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Conversations</p>
+    <p class="text-3xl font-bold text-gray-900">{{ total_conversations }}</p>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Leads Captured</p>
+    <p class="text-3xl font-bold text-gray-900">{{ total_leads }}</p>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Avg Duration</p>
+    <p class="text-3xl font-bold text-gray-900">{{ avg_duration }}</p>
+  </div>
+</div>
+
+<!-- Conversations over time (CSS bar chart) -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+  <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Conversations — Last 30 Days</h2>
+  {% if over_time %}
+    {% set max_cnt = namespace(value=1) %}
+    {% for entry in over_time %}
+      {% if entry.cnt > max_cnt.value %}{% set max_cnt.value = entry.cnt %}{% endif %}
+    {% endfor %}
+    <div class="flex items-end gap-1 h-32 overflow-x-auto">
+      {% for entry in over_time %}
+        {% set bar_pct = (entry.cnt / max_cnt.value * 100) | int %}
+        <div class="flex flex-col items-center gap-1 flex-shrink-0" style="min-width: 2rem;">
+          <span class="text-xs text-gray-500 leading-none">{{ entry.cnt }}</span>
+          <div class="w-6 bg-indigo-500 rounded-t" style="height: {{ bar_pct }}%;"></div>
+          <span class="text-xs text-gray-400 leading-none" style="font-size: 0.6rem;">{{ entry.day[5:] }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-gray-400">No conversation data in the last 30 days.</p>
+  {% endif %}
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+  <!-- Conversations by language -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">By Language</h2>
+    </div>
+    <table class="min-w-full divide-y divide-gray-100">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Language</th>
+          <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Count</th>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-100">
+        {% for lang, cnt in by_language.items() %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3 text-sm text-gray-800">{{ lang }}</td>
+          <td class="px-6 py-3 text-sm text-gray-600 text-right">{{ cnt }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="2" class="px-6 py-8 text-center text-sm text-gray-400">No data.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Top intents -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Top Intents</h2>
+    </div>
+    <table class="min-w-full divide-y divide-gray-100">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Intent</th>
+          <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Leads</th>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-100">
+        {% for item in top_intents %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-3 text-sm text-gray-800">
+            <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium">{{ item.intent }}</span>
+          </td>
+          <td class="px-6 py-3 text-sm text-gray-600 text-right">{{ item.cnt }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="2" class="px-6 py-8 text-center text-sm text-gray-400">No intent data from leads.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

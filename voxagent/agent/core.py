@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from voxagent.knowledge.engine import KnowledgeEngine
 
 
+_LANGUAGE_INSTRUCTION = (
+    "IMPORTANT: Detect the language the user is speaking and always respond "
+    "in the same language. If the user switches languages mid-conversation, "
+    "switch to match them. If the user mixes languages (e.g., Hindi and English), "
+    "respond in the same mixed style."
+)
+
+
 class VoxAgent:
     def __init__(
         self,
@@ -49,8 +57,10 @@ class VoxAgent:
 
             tools.append(create_knowledge_tool(self._knowledge_engine))
 
+        instructions = f"{_LANGUAGE_INSTRUCTION}\n\n{self._tenant_config.llm.system_prompt}"
+
         return Agent(
-            instructions=self._tenant_config.llm.system_prompt,
+            instructions=instructions,
             tools=tools,
         )
 
