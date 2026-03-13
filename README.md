@@ -2,7 +2,7 @@
 
 Open-source, multi-tenant voice AI platform for websites. Embed a `<script>` tag, get a voice assistant grounded in your content — with lead extraction, visitor memory, and a full management dashboard.
 
-Built on [LiveKit](https://livekit.io) for real-time voice, with pluggable STT/LLM/TTS providers and a hybrid RAG knowledge engine.
+Built on [LiveKit](https://livekit.io) for real-time voice, with pluggable STT->LLM->TTS providers and a hybrid RAG knowledge engine.
 
 ## Features
 
