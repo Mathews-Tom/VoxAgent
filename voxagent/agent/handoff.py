@@ -7,6 +7,8 @@ from enum import StrEnum
 import httpx
 from livekit import rtc
 
+from voxagent.models import ConversationEvent
+
 
 _HANDOFF_PHRASES = {
     "talk to a human",
@@ -39,10 +41,13 @@ class HandoffDetector:
         self._keywords = [kw.lower() for kw in keywords] if keywords else []
         self._failure_threshold = failure_threshold
 
-    def check(self, transcript: list[dict[str, str]]) -> HandoffReason | None:
-        user_messages = [
-            m["content"] for m in transcript if m.get("role") == "user"
-        ]
+    def check(
+        self,
+        transcript: list[dict[str, str]] | None = None,
+        events: list[ConversationEvent] | None = None,
+    ) -> HandoffReason | None:
+        turns = events_to_transcript(events) if events is not None else (transcript or [])
+        user_messages = [m["content"] for m in turns if m.get("role") == "user"]
 
         if not user_messages:
             return None
@@ -85,6 +90,13 @@ async def fire_handoff_webhook(
     async with httpx.AsyncClient() as client:
         response = await client.post(webhook_url, json=payload)
         response.raise_for_status()
+
+
+def events_to_transcript(events: list[ConversationEvent] | None) -> list[dict[str, str]]:
+    if not events:
+        return []
+    ordered = sorted(events, key=lambda event: (event.sequence_number, event.created_at))
+    return [{"role": event.role, "content": event.content} for event in ordered]
 
 
 async def mute_bot_on_human_join(room: rtc.Room) -> None:

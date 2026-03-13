@@ -15,7 +15,7 @@ from voxagent.models import ConversationEvent, ConversationRecord, TenantConfig
 from voxagent.plugins.llm import create_llm
 from voxagent.plugins.stt import create_stt
 from voxagent.plugins.tts import create_tts
-from voxagent.queries import create_conversation
+from voxagent.queries import create_conversation, create_conversation_events
 
 if TYPE_CHECKING:
     from voxagent.knowledge.engine import KnowledgeEngine
@@ -79,14 +79,32 @@ class VoxAgent:
         )
 
     def on_message(self, role: str, content: str) -> None:
-        self._events.append(ConversationEvent(role=role, content=content))
+        self._events.append(
+            ConversationEvent(
+                role=role,
+                content=content,
+                sequence_number=len(self._events),
+            )
+        )
 
     def on_user_transcript(self, content: str, source: str = "session") -> None:
-        self._events.append(ConversationEvent(role="user", content=content, source=source))
+        self._events.append(
+            ConversationEvent(
+                role="user",
+                content=content,
+                source=source,
+                sequence_number=len(self._events),
+            )
+        )
 
     def on_agent_transcript(self, content: str, source: str = "session") -> None:
         self._events.append(
-            ConversationEvent(role="assistant", content=content, source=source)
+            ConversationEvent(
+                role="assistant",
+                content=content,
+                source=source,
+                sequence_number=len(self._events),
+            )
         )
 
     def conversation_events(self) -> list[ConversationEvent]:
@@ -113,7 +131,20 @@ class VoxAgent:
             started_at=started_at,
             ended_at=ended_at,
         )
-        return await create_conversation(pool, record)
+        conversation = await create_conversation(pool, record)
+        persisted_events = [
+            ConversationEvent(
+                conversation_id=conversation.id,
+                role=event.role,
+                content=event.content,
+                source=event.source,
+                sequence_number=event.sequence_number,
+                created_at=event.created_at,
+            )
+            for event in self._events
+        ]
+        await create_conversation_events(pool, conversation.id, persisted_events)
+        return conversation
 
     async def start(
         self,

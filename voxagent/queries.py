@@ -8,6 +8,7 @@ import asyncpg
 from voxagent.models import (
     AdminRole,
     AdminUser,
+    ConversationEvent,
     ConversationRecord,
     ConfigAuditLogEntry,
     JobRecord,
@@ -79,6 +80,18 @@ def _row_to_job(row: asyncpg.Record) -> JobRecord:
         last_error=row["last_error"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_conversation_event(row: asyncpg.Record) -> ConversationEvent:
+    return ConversationEvent(
+        id=row["id"],
+        conversation_id=row["conversation_id"],
+        role=row["role"],
+        content=row["content"],
+        source=row["source"],
+        sequence_number=row["sequence_number"],
+        created_at=row["created_at"],
     )
 
 
@@ -536,6 +549,73 @@ async def create_conversation(
         started_at=row["started_at"],
         ended_at=row["ended_at"],
     )
+
+
+async def create_conversation_events(
+    pool: asyncpg.Pool,
+    conversation_id: uuid.UUID,
+    events: list[ConversationEvent],
+) -> list[ConversationEvent]:
+    if not events:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            INSERT INTO conversation_events (
+                conversation_id,
+                role,
+                content,
+                source,
+                sequence_number,
+                created_at
+            )
+            SELECT
+                $1,
+                event.role,
+                event.content,
+                event.source,
+                event.sequence_number,
+                event.created_at
+            FROM jsonb_to_recordset($2::jsonb) AS event(
+                role text,
+                content text,
+                source text,
+                sequence_number integer,
+                created_at timestamptz
+            )
+            RETURNING *
+            """,
+            conversation_id,
+            json.dumps(
+                [
+                    {
+                        "role": event.role,
+                        "content": event.content,
+                        "source": event.source,
+                        "sequence_number": event.sequence_number,
+                        "created_at": event.created_at.isoformat(),
+                    }
+                    for event in events
+                ]
+            ),
+        )
+    return [_row_to_conversation_event(row) for row in rows]
+
+
+async def list_conversation_events(
+    pool: asyncpg.Pool,
+    conversation_id: uuid.UUID,
+) -> list[ConversationEvent]:
+    rows = await pool.fetch(
+        """
+        SELECT *
+        FROM conversation_events
+        WHERE conversation_id = $1
+        ORDER BY sequence_number ASC, created_at ASC
+        """,
+        conversation_id,
+    )
+    return [_row_to_conversation_event(row) for row in rows]
 
 
 async def list_conversations(

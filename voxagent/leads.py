@@ -7,7 +7,7 @@ import uuid
 import httpx
 
 from voxagent.config import Config
-from voxagent.models import LeadRecord, LLMProvider, LLMConfig
+from voxagent.models import ConversationEvent, LLMConfig, LLMProvider, LeadRecord
 from voxagent.queries import create_lead
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,11 @@ def _format_transcript(transcript: list[dict[str, str]]) -> str:
         content = turn.get("content", "")
         lines.append(f"{role}: {content}")
     return "\n".join(lines)
+
+
+def transcript_from_events(events: list[ConversationEvent]) -> list[dict[str, str]]:
+    ordered = sorted(events, key=lambda event: (event.sequence_number, event.created_at))
+    return [{"role": event.role, "content": event.content} for event in ordered]
 
 
 def _parse_llm_json(raw: str) -> dict[str, str | None]:
@@ -106,22 +111,25 @@ async def _call_openai(
 
 
 async def extract_lead(
-    transcript: list[dict[str, str]],
+    transcript: list[dict[str, str]] | None,
     tenant_id: uuid.UUID,
     conversation_id: uuid.UUID,
     llm_config: LLMConfig,
     app_config: Config,
     pool: "asyncpg.Pool",  # type: ignore[name-defined]  # noqa: F821
+    *,
+    events: list[ConversationEvent] | None = None,
 ) -> LeadRecord | None:
     """Run LLM-based lead extraction on a conversation transcript.
 
     Returns a persisted LeadRecord if at least one of name/email/phone is
     present, or None when the conversation contains no lead information.
     """
-    if not transcript:
+    normalized_transcript = transcript or transcript_from_events(events or [])
+    if not normalized_transcript:
         return None
 
-    transcript_text = _format_transcript(transcript)
+    transcript_text = _format_transcript(normalized_transcript)
     prompt = _EXTRACTION_PROMPT
 
     async with httpx.AsyncClient() as client:
