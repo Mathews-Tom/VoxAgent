@@ -8,9 +8,10 @@ from pathlib import Path
 from livekit import agents
 from livekit.agents import WorkerOptions, cli
 
-from voxagent.agent.core import VoxAgent
+from voxagent.agent.core import PostSessionStageRecorder, VoxAgent
 from voxagent.config import load_config
 from voxagent.db import close_pool, init_pool
+from voxagent.jobs.runner import enqueue_post_session_jobs
 from voxagent.knowledge.engine import KnowledgeEngine
 from voxagent.queries import get_tenant, get_visitor_memory, upsert_visitor_memory
 
@@ -58,6 +59,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             visitor_memory_summary=prior_memory.summary if prior_memory else None,
             mcp_tools=mcp_tools,
         )
+        stage_recorder = PostSessionStageRecorder(str(tenant_config.id))
 
         started_at = datetime.now(UTC)
 
@@ -65,20 +67,38 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         await agent.start(session=session, room=ctx.room, participant=participant)
 
         # Post-session: save conversation
-        conversation = await agent.save_conversation(
-            pool=pool, room_name=room_name, visitor_id=visitor_id, started_at=started_at
+        conversation = await stage_recorder.run(
+            "conversation_persist",
+            agent.save_conversation(
+                pool=pool, room_name=room_name, visitor_id=visitor_id, started_at=started_at
+            ),
         )
+
+        if app_config.enable_async_post_session_jobs:
+            await stage_recorder.run(
+                "post_session_enqueue",
+                enqueue_post_session_jobs(
+                    pool=pool,
+                    tenant_id=tenant_config.id,
+                    conversation_id=conversation.id,
+                    visitor_id=visitor_id,
+                ),
+            )
+            return
 
         # Lead extraction
         from voxagent.leads import extract_lead
 
-        lead = await extract_lead(
-            transcript=conversation.transcript,
-            tenant_id=tenant_config.id,
-            conversation_id=conversation.id,
-            llm_config=tenant_config.llm,
-            app_config=app_config,
-            pool=pool,
+        lead = await stage_recorder.run(
+            "lead_extraction",
+            extract_lead(
+                transcript=conversation.transcript,
+                tenant_id=tenant_config.id,
+                conversation_id=conversation.id,
+                llm_config=tenant_config.llm,
+                app_config=app_config,
+                pool=pool,
+            ),
         )
 
         # Webhook dispatch for extracted leads
@@ -86,7 +106,10 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             from voxagent.webhooks import dispatch_lead_webhook
 
             try:
-                await dispatch_lead_webhook(tenant_config.webhook_url, lead)
+                await stage_recorder.run(
+                    "lead_webhook",
+                    dispatch_lead_webhook(tenant_config.webhook_url, lead),
+                )
             except Exception:
                 logger.exception("Webhook dispatch failed for lead %s", lead.id)
 
@@ -95,22 +118,28 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         from voxagent.models import VisitorMemory
 
         try:
-            new_summary = await summarize_for_memory(
-                transcript=conversation.transcript,
-                previous_summary=prior_memory.summary if prior_memory else None,
-                llm_config=tenant_config.llm,
-                app_config=app_config,
+            new_summary = await stage_recorder.run(
+                "visitor_memory_summary",
+                summarize_for_memory(
+                    transcript=conversation.transcript,
+                    previous_summary=prior_memory.summary if prior_memory else None,
+                    llm_config=tenant_config.llm,
+                    app_config=app_config,
+                ),
             )
             turn_count = (prior_memory.turn_count if prior_memory else 0) + len(
                 conversation.transcript
             )
-            await upsert_visitor_memory(
-                pool,
-                VisitorMemory(
-                    tenant_id=tenant_config.id,
-                    visitor_id=visitor_id,
-                    summary=new_summary,
-                    turn_count=turn_count,
+            await stage_recorder.run(
+                "visitor_memory_persist",
+                upsert_visitor_memory(
+                    pool,
+                    VisitorMemory(
+                        tenant_id=tenant_config.id,
+                        visitor_id=visitor_id,
+                        summary=new_summary,
+                        turn_count=turn_count,
+                    ),
                 ),
             )
         except Exception:
