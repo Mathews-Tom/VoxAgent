@@ -4,14 +4,24 @@ Base URL: `http://localhost:8080`
 
 ## Health & Metrics
 
-### `GET /health`
+### `GET /health/live`
 
-Returns server status.
+Returns liveness status for load balancers and simple process probes.
 
 **Response** `200`:
 
 ```json
 { "status": "ok" }
+```
+
+### `GET /health/ready`
+
+Returns readiness status after verifying database reachability.
+
+**Response** `200`:
+
+```json
+{ "status": "ready" }
 ```
 
 ### `GET /metrics`
