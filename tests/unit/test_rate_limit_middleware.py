@@ -122,3 +122,37 @@ class TestRateLimitMiddleware:
         body_call = send.call_args_list[1][0][0]
         parsed = json.loads(body_call["body"])
         assert parsed == {"detail": "Rate limit exceeded"}
+
+    @pytest.mark.asyncio
+    async def test_public_policy_fails_open_when_backend_errors(self) -> None:
+        app = AsyncMock()
+
+        class _BrokenStore:
+            async def is_allowed(self, policy: object, key: str) -> bool:
+                raise RuntimeError("redis unavailable")
+
+        mw = RateLimitMiddleware(app, store=_BrokenStore())
+        receive = AsyncMock()
+        send = AsyncMock()
+
+        await mw(_http_scope(path="/api/token"), receive, send)
+
+        app.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_policy_fails_closed_when_backend_errors(self) -> None:
+        app = AsyncMock()
+
+        class _BrokenStore:
+            async def is_allowed(self, policy: object, key: str) -> bool:
+                raise RuntimeError("redis unavailable")
+
+        mw = RateLimitMiddleware(app, store=_BrokenStore())
+        receive = AsyncMock()
+        send = AsyncMock()
+
+        await mw(_http_scope(path="/api/tenants"), receive, send)
+
+        app.assert_not_called()
+        start_call = send.call_args_list[0][0][0]
+        assert start_call["status"] == 503
