@@ -9,10 +9,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from voxagent.knowledge.chunker import chunk_pages
-from voxagent.knowledge.engine import KnowledgeEngine
 from voxagent.knowledge.ingest import crawl_website, ingest_files
-from voxagent.server.auth import require_auth
+from voxagent.knowledge.service import ingest_pages as ingest_pages_service
+from voxagent.knowledge.service import knowledge_storage_dir, load_manifest
+from voxagent.models import AuthContext
+from voxagent.server.auth import require_auth_context
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -23,32 +24,28 @@ _SUPPORTED_EXTENSIONS = {".txt", ".pdf", ".docx"}
 
 
 def _knowledge_dir(tenant_id: uuid.UUID) -> Path:
-    return Path("data") / str(tenant_id) / "knowledge"
+    return knowledge_storage_dir(tenant_id)
 
 
 def _load_sources(knowledge_dir: Path) -> list[dict[str, object]]:
-    chunks_file = knowledge_dir / "chunks.json"
-    if not chunks_file.exists():
+    manifest = load_manifest(uuid.UUID(knowledge_dir.parent.name))
+    sources = manifest.get("sources", [])
+    if not sources:
         return []
-
-    with chunks_file.open(encoding="utf-8") as fh:
-        chunks = json.load(fh)
-
     counts: dict[str, int] = {}
-    for chunk in chunks:
-        url = chunk.get("source_url", "unknown")
-        counts[url] = counts.get(url, 0) + 1
-
-    return [{"name": url, "chunk_count": count} for url, count in counts.items()]
+    for source in sources:
+        source_key = str(source.get("source_key", "unknown"))
+        counts[source_key] = counts.get(source_key, 0) + 1
+    return [{"name": key, "chunk_count": count} for key, count in counts.items()]
 
 
 @router.get("/{tenant_id}/knowledge", response_class=HTMLResponse)
 async def knowledge_page(
     tenant_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    if auth_tenant_id != tenant_id:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     sources = _load_sources(_knowledge_dir(tenant_id))
@@ -69,9 +66,9 @@ async def knowledge_upload(
     tenant_id: uuid.UUID,
     request: Request,
     file: UploadFile = File(...),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    if auth_tenant_id != tenant_id:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     filename = file.filename or "upload"
@@ -101,22 +98,9 @@ async def knowledge_upload(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    chunks = chunk_pages(pages)
-    storage_dir = _knowledge_dir(tenant_id)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    engine = KnowledgeEngine(str(storage_dir))
+    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
 
-    if (storage_dir / "chunks.json").exists():
-        engine.load_index()
-        existing_chunks = engine._chunks  # noqa: SLF001
-        all_chunks = existing_chunks + chunks
-    else:
-        all_chunks = chunks
-
-    engine.build_index(all_chunks)
-    engine.update_hash_map(pages)
-
-    sources = _load_sources(storage_dir)
+    sources = _load_sources(_knowledge_dir(tenant_id))
     return templates.TemplateResponse(
         "knowledge.html",
         {
@@ -134,9 +118,9 @@ async def knowledge_crawl(
     tenant_id: uuid.UUID,
     request: Request,
     url: str = Form(...),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    if auth_tenant_id != tenant_id:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     pages = await crawl_website(url)
@@ -154,22 +138,9 @@ async def knowledge_crawl(
             },
         )
 
-    chunks = chunk_pages(pages)
-    storage_dir = _knowledge_dir(tenant_id)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    engine = KnowledgeEngine(str(storage_dir))
+    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
 
-    if (storage_dir / "chunks.json").exists():
-        engine.load_index()
-        existing_chunks = engine._chunks  # noqa: SLF001
-        all_chunks = existing_chunks + chunks
-    else:
-        all_chunks = chunks
-
-    engine.build_index(all_chunks)
-    engine.update_hash_map(pages)
-
-    sources = _load_sources(storage_dir)
+    sources = _load_sources(_knowledge_dir(tenant_id))
     return templates.TemplateResponse(
         "knowledge.html",
         {
