@@ -497,9 +497,9 @@ async def mark_job_failed(
     pool: asyncpg.Pool,
     job: JobRecord,
     error: str,
-    retry_after_seconds: int = 30,
 ) -> None:
     status = JobStatus.FAILED if job.attempt_count < job.max_attempts else JobStatus.DEAD_LETTER
+    retry_after_seconds = min(30 * (2 ** max(job.attempt_count - 1, 0)), 3600)
     await pool.execute(
         """
         UPDATE jobs
@@ -678,6 +678,13 @@ async def create_lead(pool: asyncpg.Pool, lead: LeadRecord) -> LeadRecord:
         """
         INSERT INTO leads (tenant_id, conversation_id, name, email, phone, intent, summary)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (conversation_id)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            email = EXCLUDED.email,
+            phone = EXCLUDED.phone,
+            intent = EXCLUDED.intent,
+            summary = EXCLUDED.summary
         RETURNING *
         """,
         lead.tenant_id,
@@ -688,6 +695,46 @@ async def create_lead(pool: asyncpg.Pool, lead: LeadRecord) -> LeadRecord:
         lead.intent,
         lead.summary,
     )
+    return LeadRecord(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        conversation_id=row["conversation_id"],
+        name=row["name"],
+        email=row["email"],
+        phone=row["phone"],
+        intent=row["intent"],
+        summary=row["summary"],
+        extracted_at=row["extracted_at"],
+    )
+
+
+async def get_lead(pool: asyncpg.Pool, lead_id: uuid.UUID) -> LeadRecord | None:
+    row = await pool.fetchrow("SELECT * FROM leads WHERE id = $1", lead_id)
+    if row is None:
+        return None
+    return LeadRecord(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        conversation_id=row["conversation_id"],
+        name=row["name"],
+        email=row["email"],
+        phone=row["phone"],
+        intent=row["intent"],
+        summary=row["summary"],
+        extracted_at=row["extracted_at"],
+    )
+
+
+async def get_lead_by_conversation(
+    pool: asyncpg.Pool,
+    conversation_id: uuid.UUID,
+) -> LeadRecord | None:
+    row = await pool.fetchrow(
+        "SELECT * FROM leads WHERE conversation_id = $1",
+        conversation_id,
+    )
+    if row is None:
+        return None
     return LeadRecord(
         id=row["id"],
         tenant_id=row["tenant_id"],
