@@ -16,6 +16,13 @@ def knowledge_storage_dir(tenant_id: uuid.UUID) -> Path:
     return Path("data") / str(tenant_id) / "knowledge"
 
 
+def _chunk_counts_by_source(engine: KnowledgeEngine) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for chunk in getattr(engine, "_chunks", []):
+        counts[chunk.source_url] = counts.get(chunk.source_url, 0) + 1
+    return counts
+
+
 async def ingest_pages(
     pool: asyncpg.Pool,
     tenant_id: uuid.UUID,
@@ -134,3 +141,122 @@ async def ingest_pages(
 def load_manifest(tenant_id: uuid.UUID) -> dict[str, object]:
     engine = KnowledgeEngine(str(knowledge_storage_dir(tenant_id)))
     return engine.read_manifest()
+
+
+async def rebuild_index(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, object]:
+    latest_versions = await pool.fetch(
+        """
+        SELECT DISTINCT ON (ks.id)
+            ks.source_key,
+            ks.source_type,
+            ksv.id AS version_id,
+            ksv.title,
+            ksv.content_hash,
+            ksv.content_text,
+            ksv.created_at
+        FROM knowledge_sources ks
+        JOIN knowledge_source_versions ksv ON ksv.knowledge_source_id = ks.id
+        WHERE ks.tenant_id = $1
+          AND ks.is_active = TRUE
+        ORDER BY ks.id, ksv.created_at DESC
+        """,
+        tenant_id,
+    )
+    pages = [
+        PageContent(
+            url=row["source_key"],
+            title=row["title"],
+            html="",
+            text=row["content_text"],
+            content_hash=row["content_hash"],
+            source_type=row["source_type"],
+            source_version_id=str(row["version_id"]),
+        )
+        for row in latest_versions
+    ]
+    storage_dir = knowledge_storage_dir(tenant_id)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    engine = KnowledgeEngine(str(storage_dir))
+    engine.build_index(chunk_pages(pages))
+    manifest = {
+        "tenant_id": str(tenant_id),
+        "built_at": datetime.now(UTC).isoformat(),
+        "chunk_count": len(getattr(engine, "_chunks", [])),
+        "sources": [
+            {
+                "source_key": row["source_key"],
+                "source_type": row["source_type"],
+                "source_version_id": str(row["version_id"]),
+                "title": row["title"],
+                "content_hash": row["content_hash"],
+            }
+            for row in latest_versions
+        ],
+    }
+    engine.write_manifest(manifest)
+    await pool.execute(
+        """
+        INSERT INTO knowledge_indexes (tenant_id, artifact_manifest, chunk_count)
+        VALUES ($1, $2, $3)
+        """,
+        tenant_id,
+        json.dumps(manifest),
+        manifest["chunk_count"],
+    )
+    return manifest
+
+
+async def list_sources(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> list[dict[str, object]]:
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT ON (ks.id)
+            ks.id,
+            ks.source_key,
+            ks.source_type,
+            ks.is_active,
+            ks.updated_at,
+            ksv.id AS version_id,
+            ksv.title,
+            ksv.content_hash,
+            ksv.created_at
+        FROM knowledge_sources ks
+        LEFT JOIN knowledge_source_versions ksv ON ksv.knowledge_source_id = ks.id
+        WHERE ks.tenant_id = $1
+        ORDER BY ks.id, ksv.created_at DESC NULLS LAST
+        """,
+        tenant_id,
+    )
+    engine = KnowledgeEngine(str(knowledge_storage_dir(tenant_id)))
+    manifest = engine.read_manifest()
+    if manifest:
+        try:
+            engine.load_index()
+        except FileNotFoundError:
+            pass
+    chunk_counts = _chunk_counts_by_source(engine)
+    return [
+        {
+            "name": row["source_key"],
+            "title": row["title"] or row["source_key"],
+            "source_type": row["source_type"],
+            "source_version_id": str(row["version_id"]) if row["version_id"] else None,
+            "content_hash": row["content_hash"],
+            "chunk_count": chunk_counts.get(row["source_key"], 0),
+            "is_active": row["is_active"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    ]
+
+
+async def delete_source(pool: asyncpg.Pool, tenant_id: uuid.UUID, source_key: str) -> dict[str, object]:
+    await pool.execute(
+        """
+        UPDATE knowledge_sources
+        SET is_active = FALSE, updated_at = now()
+        WHERE tenant_id = $1 AND source_key = $2
+        """,
+        tenant_id,
+        source_key,
+    )
+    return await rebuild_index(pool, tenant_id)
