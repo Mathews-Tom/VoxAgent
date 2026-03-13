@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from livekit.api import AccessToken, VideoGrants
 from pydantic import BaseModel
 
+from voxagent.metrics import TOKEN_ISSUANCE_TOTAL
 from voxagent.queries import get_tenant
 
 router = APIRouter()
@@ -61,10 +62,12 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
     try:
         tenant_id = uuid.UUID(body.tenant_id)
     except ValueError as exc:
+        TOKEN_ISSUANCE_TOTAL.labels(tenant_id="invalid", outcome="invalid_tenant_id").inc()
         raise HTTPException(status_code=400, detail="Invalid tenant ID") from exc
 
     tenant = await get_tenant(pool, tenant_id)
     if tenant is None or not tenant.is_active:
+        TOKEN_ISSUANCE_TOTAL.labels(tenant_id=str(tenant_id), outcome="tenant_not_found").inc()
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     origin = request.headers.get("origin")
@@ -73,6 +76,7 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
         allowed_origins=tenant.allowed_origins,
         allow_localhost=config.allow_localhost_widget_origins,
     ):
+        TOKEN_ISSUANCE_TOTAL.labels(tenant_id=str(tenant_id), outcome="origin_rejected").inc()
         raise HTTPException(status_code=403, detail="Origin not allowed")
 
     visitor_id = uuid.uuid4()
@@ -88,6 +92,7 @@ async def create_token(body: TokenRequest, request: Request) -> TokenResponse:
         "session_type": "widget",
     }
     jwt_token = token.to_jwt()
+    TOKEN_ISSUANCE_TOTAL.labels(tenant_id=str(tenant_id), outcome="issued").inc()
 
     return TokenResponse(
         token=jwt_token,

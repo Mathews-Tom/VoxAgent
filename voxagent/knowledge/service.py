@@ -10,6 +10,7 @@ import asyncpg
 from voxagent.knowledge.chunker import chunk_pages
 from voxagent.knowledge.engine import KnowledgeEngine
 from voxagent.knowledge.ingest import PageContent
+from voxagent.metrics import KNOWLEDGE_INDEX_BUILDS
 
 
 def knowledge_storage_dir(tenant_id: uuid.UUID) -> Path:
@@ -135,6 +136,7 @@ async def ingest_pages(
         json.dumps(manifest),
         len(chunks),
     )
+    KNOWLEDGE_INDEX_BUILDS.labels(tenant_id=str(tenant_id), trigger="ingest").inc()
     return manifest
 
 
@@ -203,6 +205,7 @@ async def rebuild_index(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, o
         json.dumps(manifest),
         manifest["chunk_count"],
     )
+    KNOWLEDGE_INDEX_BUILDS.labels(tenant_id=str(tenant_id), trigger="rebuild").inc()
     return manifest
 
 

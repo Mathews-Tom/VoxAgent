@@ -120,8 +120,11 @@ The server starts at `http://localhost:8080`. Database migrations run automatica
 Verify it's running:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8080/health/live
 # {"status":"ok"}
+
+curl http://localhost:8080/health/ready
+# {"status":"ready"}
 ```
 
 ## 7. Start the Agent Worker

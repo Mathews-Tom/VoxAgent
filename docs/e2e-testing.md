@@ -64,8 +64,11 @@ uv run uvicorn voxagent.server.app:app --host 127.0.0.1 --port 8080 --reload
 Verify:
 
 ```bash
-curl -s http://localhost:8080/health
+curl -s http://localhost:8080/health/live
 # {"status":"ok"}
+
+curl -s http://localhost:8080/health/ready
+# {"status":"ready"}
 ```
 
 ### 1.6 Start the LiveKit voice worker (separate terminal)
@@ -560,7 +563,7 @@ psql postgresql://voxagent:voxagent@localhost:5432/voxagent \
 
 ```bash
 for i in $(seq 1 121); do
-  CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health/live)
   [ "$CODE" = "429" ] && echo "Rate limited at request $i" && break
 done
 # Rate limited at request 121
