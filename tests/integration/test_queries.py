@@ -13,6 +13,7 @@ import pytest_asyncio
 _MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
 
 from voxagent.models import (
+    ConversationEvent,
     ConversationRecord,
     LeadRecord,
     TenantConfig,
@@ -20,6 +21,7 @@ from voxagent.models import (
 )
 from voxagent.queries import (
     create_conversation,
+    create_conversation_events,
     create_lead,
     create_tenant,
     delete_tenant,
@@ -27,6 +29,7 @@ from voxagent.queries import (
     get_tenant,
     get_tenant_by_domain,
     get_visitor_memory,
+    list_conversation_events,
     list_conversations,
     list_leads,
     list_tenants,
@@ -129,6 +132,42 @@ class TestConversationQueries:
         fetched = await get_conversation(pool, created.id)
         assert fetched is not None
         assert fetched.transcript == [{"role": "user", "content": "hi"}]
+
+    @pytest.mark.asyncio
+    async def test_create_and_list_events(self, pool: asyncpg.Pool) -> None:
+        tenant = await create_tenant(pool, _make_tenant())
+        conversation = await create_conversation(
+            pool,
+            ConversationRecord(
+                tenant_id=tenant.id,
+                visitor_id="v2",
+                room_name="room-events",
+                transcript=[{"role": "user", "content": "hello"}],
+                started_at=datetime.now(UTC),
+            ),
+        )
+        created_events = await create_conversation_events(
+            pool,
+            conversation.id,
+            [
+                ConversationEvent(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content="hello",
+                    sequence_number=0,
+                ),
+                ConversationEvent(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content="hi there",
+                    sequence_number=1,
+                ),
+            ],
+        )
+
+        assert len(created_events) == 2
+        fetched_events = await list_conversation_events(pool, conversation.id)
+        assert [event.content for event in fetched_events] == ["hello", "hi there"]
 
     @pytest.mark.asyncio
     async def test_list_with_pagination(self, pool: asyncpg.Pool) -> None:
