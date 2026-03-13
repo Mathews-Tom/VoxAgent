@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncpg
 import pytest
@@ -153,7 +153,15 @@ async def test_concurrent_ingestion_and_job_processing_remain_idempotent(
         orchestrate_ingestion(pool, tenant.id, [page], trigger="load_test"),
         orchestrate_ingestion(pool, tenant.id, [page], trigger="load_test"),
     )
-    await run_job_batch(pool, MagicMock(), limit=20)
+    with (
+        patch("voxagent.leads.extract_lead", new_callable=AsyncMock, return_value=None),
+        patch(
+            "voxagent.memory.summarize_for_memory",
+            new_callable=AsyncMock,
+            return_value="Memory summary",
+        ),
+    ):
+        await run_job_batch(pool, MagicMock(), limit=20)
 
     lead_count = await pool.fetchval(
         "SELECT COUNT(*) FROM leads WHERE conversation_id = $1",

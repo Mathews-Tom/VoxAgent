@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncpg
 import pytest
@@ -256,13 +256,24 @@ class TestLeadQueries:
     @pytest.mark.asyncio
     async def test_pagination(self, pool: asyncpg.Pool) -> None:
         tenant = await create_tenant(pool, _make_tenant())
-        conv = await create_conversation(pool, ConversationRecord(
-            tenant_id=tenant.id, visitor_id="v1", room_name="r1", started_at=datetime.now(UTC),
-        ))
         for i in range(3):
-            await create_lead(pool, LeadRecord(
-                tenant_id=tenant.id, conversation_id=conv.id, name=f"Lead{i}",
-            ))
+            conversation = await create_conversation(
+                pool,
+                ConversationRecord(
+                    tenant_id=tenant.id,
+                    visitor_id=f"v{i}",
+                    room_name=f"r{i}",
+                    started_at=datetime.now(UTC),
+                ),
+            )
+            await create_lead(
+                pool,
+                LeadRecord(
+                    tenant_id=tenant.id,
+                    conversation_id=conversation.id,
+                    name=f"Lead{i}",
+                ),
+            )
         page = await list_leads(pool, tenant.id, limit=2, offset=0)
         assert len(page) == 2
 
@@ -284,7 +295,12 @@ class TestManagedKnowledgeIngestion:
 
         first = await orchestrate_ingestion(pool, tenant.id, [page], trigger="integration")
         assert first["queued"] is True
-        await run_job_batch(pool, MagicMock(), limit=10)
+        with patch(
+            "voxagent.memory.summarize_for_memory",
+            new_callable=AsyncMock,
+            return_value="Memory summary",
+        ):
+            await run_job_batch(pool, MagicMock(), limit=10)
 
         second = await orchestrate_ingestion(pool, tenant.id, [page], trigger="integration")
         assert second["queued"] is False
@@ -328,7 +344,12 @@ class TestManagedKnowledgeIngestion:
             trigger="integration",
         )
         assert initial["queued"] is True
-        await run_job_batch(pool, MagicMock(), limit=10)
+        with patch(
+            "voxagent.memory.summarize_for_memory",
+            new_callable=AsyncMock,
+            return_value="Memory summary",
+        ):
+            await run_job_batch(pool, MagicMock(), limit=10)
 
         before_rows = await pool.fetch(
             """
@@ -358,7 +379,12 @@ class TestManagedKnowledgeIngestion:
         )
         partial = await orchestrate_ingestion(pool, tenant.id, [pricing_v2], trigger="integration")
         assert partial["queued"] is True
-        await run_job_batch(pool, MagicMock(), limit=10)
+        with patch(
+            "voxagent.memory.summarize_for_memory",
+            new_callable=AsyncMock,
+            return_value="Memory summary",
+        ):
+            await run_job_batch(pool, MagicMock(), limit=10)
 
         after_rows = await pool.fetch(
             """
