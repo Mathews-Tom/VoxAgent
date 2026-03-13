@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from collections.abc import Awaitable
 
 import asyncpg
 from livekit import rtc
@@ -9,7 +10,8 @@ from livekit.agents import Agent, AgentSession, RoomInputOptions, llm
 from livekit.plugins import silero
 
 from voxagent.config import Config
-from voxagent.models import ConversationRecord, TenantConfig
+from voxagent.metrics import POST_SESSION_STAGE_DURATION, POST_SESSION_STAGE_FAILURES
+from voxagent.models import ConversationEvent, ConversationRecord, TenantConfig
 from voxagent.plugins.llm import create_llm
 from voxagent.plugins.stt import create_stt
 from voxagent.plugins.tts import create_tts
@@ -44,7 +46,7 @@ class VoxAgent:
         self._llm = create_llm(tenant_config.llm, app_config)
         self._tts = create_tts(tenant_config.tts, app_config)
         self._vad = silero.VAD.load()
-        self._transcript: list[dict[str, str]] = []
+        self._events: list[ConversationEvent] = []
 
     def build_session(self) -> AgentSession:
         return AgentSession(
@@ -77,7 +79,21 @@ class VoxAgent:
         )
 
     def on_message(self, role: str, content: str) -> None:
-        self._transcript.append({"role": role, "content": content})
+        self._events.append(ConversationEvent(role=role, content=content))
+
+    def on_user_transcript(self, content: str, source: str = "session") -> None:
+        self._events.append(ConversationEvent(role="user", content=content, source=source))
+
+    def on_agent_transcript(self, content: str, source: str = "session") -> None:
+        self._events.append(
+            ConversationEvent(role="assistant", content=content, source=source)
+        )
+
+    def conversation_events(self) -> list[ConversationEvent]:
+        return list(self._events)
+
+    def transcript(self) -> list[dict[str, str]]:
+        return [{"role": event.role, "content": event.content} for event in self._events]
 
     async def save_conversation(
         self,
@@ -92,7 +108,7 @@ class VoxAgent:
             tenant_id=self._tenant_config.id,
             visitor_id=visitor_id,
             room_name=room_name,
-            transcript=self._transcript,
+            transcript=self.transcript(),
             duration_seconds=duration_seconds,
             started_at=started_at,
             ended_at=ended_at,
@@ -112,3 +128,33 @@ class VoxAgent:
             participant=participant,
             room_input_options=RoomInputOptions(),
         )
+
+
+class PostSessionStageRecorder:
+    def __init__(self, tenant_id: str) -> None:
+        self._tenant_id = tenant_id
+
+    async def run(self, stage: str, action: Awaitable[object]) -> object:
+        started = datetime.now(UTC)
+        try:
+            result = await action
+        except Exception:
+            duration = (datetime.now(UTC) - started).total_seconds()
+            POST_SESSION_STAGE_DURATION.labels(
+                tenant_id=self._tenant_id,
+                stage=stage,
+                outcome="failure",
+            ).observe(duration)
+            POST_SESSION_STAGE_FAILURES.labels(
+                tenant_id=self._tenant_id,
+                stage=stage,
+            ).inc()
+            raise
+
+        duration = (datetime.now(UTC) - started).total_seconds()
+        POST_SESSION_STAGE_DURATION.labels(
+            tenant_id=self._tenant_id,
+            stage=stage,
+            outcome="success",
+        ).observe(duration)
+        return result

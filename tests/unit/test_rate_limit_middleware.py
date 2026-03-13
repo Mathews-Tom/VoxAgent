@@ -69,17 +69,17 @@ class TestRateLimitMiddleware:
         receive = AsyncMock()
         tid = uuid.uuid4()
         path = f"/api/tenants/{tid}/leads"
-        # Tenant limit is 300 — send 300 from different IPs to avoid IP limit
-        for i in range(300):
+        # Admin-class endpoints are limited to 120/minute.
+        for i in range(120):
             scope = _http_scope(path=path, client=(f"10.{i // 256}.{i % 256}.1", 9000))
             await mw(scope, receive, AsyncMock())
-        assert app.call_count == 300
+        assert app.call_count == 120
 
-        # 301st request with new IP but same tenant
+        # 121st request with new IP but same tenant
         send_101 = AsyncMock()
         scope = _http_scope(path=path, client=("192.168.1.1", 9000))
         await mw(scope, receive, send_101)
-        assert app.call_count == 300
+        assert app.call_count == 120
         start_call = send_101.call_args_list[0][0][0]
         assert start_call["status"] == 429
 

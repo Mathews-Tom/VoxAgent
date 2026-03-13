@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from voxagent.models import TenantConfig
+from voxagent.models import AuthContext, TenantConfig
 from voxagent.queries import get_tenant, list_leads, update_tenant
-from voxagent.server.auth import require_auth
+from voxagent.server.auth import require_auth_context
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -17,8 +17,8 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter(prefix="/dashboard")
 
 
-def _verify_tenant(auth_tenant_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
-    if auth_tenant_id != tenant_id:
+def _verify_tenant(auth_context: AuthContext, tenant_id: uuid.UUID) -> None:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -28,9 +28,9 @@ async def leads_page(
     request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     leads = await list_leads(pool, tenant_id, limit=limit, offset=offset)
@@ -52,9 +52,9 @@ async def leads_page(
 async def voice_config_page(
     tenant_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     tenant = await get_tenant(pool, tenant_id)
@@ -76,9 +76,9 @@ async def voice_config_page(
 async def widget_config_page(
     tenant_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     tenant = await get_tenant(pool, tenant_id)
@@ -103,9 +103,9 @@ async def widget_config_save(
     widget_color: str = Form(...),
     greeting: str = Form(...),
     widget_position: str = Form(...),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     tenant = await get_tenant(pool, tenant_id)
@@ -122,6 +122,7 @@ async def widget_config_save(
         id=tenant.id,
         name=tenant.name,
         domain=tenant.domain,
+        is_active=tenant.is_active,
         password_hash=tenant.password_hash,
         stt=tenant.stt,
         llm=tenant.llm,
@@ -152,9 +153,9 @@ async def widget_config_save(
 async def webhooks_page(
     tenant_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     tenant = await get_tenant(pool, tenant_id)
@@ -177,9 +178,9 @@ async def webhooks_save(
     tenant_id: uuid.UUID,
     request: Request,
     webhook_url: str = Form(default=""),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     tenant = await get_tenant(pool, tenant_id)
@@ -190,6 +191,7 @@ async def webhooks_save(
         id=tenant.id,
         name=tenant.name,
         domain=tenant.domain,
+        is_active=tenant.is_active,
         password_hash=tenant.password_hash,
         stt=tenant.stt,
         llm=tenant.llm,
