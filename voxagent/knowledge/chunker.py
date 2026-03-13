@@ -18,10 +18,10 @@ _SENTENCE_END = re.compile(r"(?<=[\.\?!])\s+")
 class Chunk:
     text: str
     source_url: str
-    source_version_id: str | None
     section_path: str
     heading_chain: list[str]
     chunk_index: int
+    source_version_id: str | None = None
 
 
 def _split_at_sentences(text: str, max_size: int) -> list[str]:
