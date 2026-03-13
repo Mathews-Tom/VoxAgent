@@ -90,6 +90,24 @@ JOB_DURATION = Histogram(
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 
+TOKEN_ISSUANCE_TOTAL = Counter(
+    "voxagent_token_issuance_total",
+    "Token issuance outcomes by tenant",
+    ["tenant_id", "outcome"],
+)
+
+RATE_LIMIT_DECISIONS = Counter(
+    "voxagent_rate_limit_decisions_total",
+    "Rate limit decisions by policy and outcome",
+    ["policy", "outcome"],
+)
+
+KNOWLEDGE_INDEX_BUILDS = Counter(
+    "voxagent_knowledge_index_builds_total",
+    "Knowledge index build attempts by tenant and trigger",
+    ["tenant_id", "trigger"],
+)
+
 
 def metrics_response() -> tuple[bytes, str]:
     """Return (body, content_type) for the /metrics endpoint."""

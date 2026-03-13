@@ -14,6 +14,8 @@ from voxagent.queries import (
     claim_due_jobs,
     enqueue_job,
     get_conversation,
+    get_lead,
+    get_lead_by_conversation,
     get_tenant,
     get_visitor_memory,
     list_conversation_events,
@@ -79,6 +81,8 @@ async def _run_job(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> No
             await _handle_visitor_memory(pool, app_config, job)
         elif job.job_type == "handoff_dispatch":
             await _handle_handoff_dispatch(pool, job)
+        elif job.job_type == "lead_webhook":
+            await _handle_lead_webhook(pool, job)
         else:
             raise RuntimeError(f"Unknown job type: {job.job_type}")
     except Exception as exc:
@@ -104,7 +108,6 @@ async def _run_job(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> No
 
 async def _handle_lead_extraction(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> None:
     from voxagent.leads import extract_lead
-    from voxagent.webhooks import dispatch_lead_webhook
 
     tenant_id = uuid.UUID(str(job.payload["tenant_id"]))
     conversation_id = uuid.UUID(str(job.payload["conversation_id"]))
@@ -124,7 +127,17 @@ async def _handle_lead_extraction(pool: asyncpg.Pool, app_config: Config, job: J
         events=events,
     )
     if lead is not None and tenant.webhook_url:
-        await dispatch_lead_webhook(tenant.webhook_url, lead)
+        await enqueue_job(
+            pool,
+            JobRecord(
+                job_type="lead_webhook",
+                payload={
+                    "tenant_id": str(tenant_id),
+                    "lead_id": str(lead.id),
+                },
+                idempotency_key=f"lead_webhook:{lead.id}",
+            ),
+        )
 
 
 async def _handle_visitor_memory(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> None:
@@ -180,3 +193,15 @@ async def _handle_handoff_dispatch(pool: asyncpg.Pool, job: JobRecord) -> None:
         reason=reason,
         transcript=conversation.transcript,
     )
+
+
+async def _handle_lead_webhook(pool: asyncpg.Pool, job: JobRecord) -> None:
+    from voxagent.webhooks import dispatch_lead_webhook
+
+    tenant_id = uuid.UUID(str(job.payload["tenant_id"]))
+    lead_id = uuid.UUID(str(job.payload["lead_id"]))
+    tenant = await get_tenant(pool, tenant_id)
+    lead = await get_lead(pool, lead_id)
+    if tenant is None or lead is None or tenant.webhook_url is None:
+        return
+    await dispatch_lead_webhook(tenant.webhook_url, lead)

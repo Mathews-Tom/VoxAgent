@@ -11,6 +11,7 @@ class _FakeResult:
         self.score = score
         self.chunk = MagicMock()
         self.chunk.source_url = source
+        self.chunk.source_version_id = "version-123"
         self.chunk.section_path = section
         self.chunk.text = text
 
@@ -53,6 +54,7 @@ class TestCreateKnowledgeTool:
         engine.search.assert_called_once_with("test query", top_k=5)
         assert "0.950" in result
         assert "doc.md" in result
+        assert "Source Version: version-123" in result
 
     @patch("voxagent.agent.tools.llm.FunctionTool")
     @pytest.mark.asyncio

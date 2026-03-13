@@ -22,6 +22,7 @@ def create_knowledge_tool(engine: KnowledgeEngine) -> llm.FunctionTool:
             formatted.append(
                 f"[{i}] (score: {result.score:.3f}) "
                 f"Source: {result.chunk.source_url}\n"
+                f"Source Version: {result.chunk.source_version_id or 'unknown'}\n"
                 f"Section: {result.chunk.section_path}\n"
                 f"{result.chunk.text}"
             )

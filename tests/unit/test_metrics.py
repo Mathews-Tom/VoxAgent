@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from voxagent.metrics import (
     CONVERSATIONS_TOTAL,
+    KNOWLEDGE_INDEX_BUILDS,
     LEADS_EXTRACTED,
+    RATE_LIMIT_DECISIONS,
+    TOKEN_ISSUANCE_TOTAL,
     metrics_response,
 )
 
@@ -46,3 +49,13 @@ class TestMetrics:
         body, _ = metrics_response()
         text = body.decode()
         assert "voxagent_leads_extracted_total" in text
+
+    def test_metrics_response_includes_operational_metrics(self) -> None:
+        TOKEN_ISSUANCE_TOTAL.labels(tenant_id="tenant-a", outcome="issued").inc()
+        RATE_LIMIT_DECISIONS.labels(policy="public", outcome="allowed").inc()
+        KNOWLEDGE_INDEX_BUILDS.labels(tenant_id="tenant-a", trigger="rebuild").inc()
+        body, _ = metrics_response()
+        text = body.decode()
+        assert "voxagent_token_issuance_total" in text
+        assert "voxagent_rate_limit_decisions_total" in text
+        assert "voxagent_knowledge_index_builds_total" in text

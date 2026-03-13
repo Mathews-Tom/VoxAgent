@@ -10,8 +10,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from voxagent.knowledge.ingest import crawl_website, ingest_files
+from voxagent.knowledge.service import delete_source as delete_source_service
 from voxagent.knowledge.service import ingest_pages as ingest_pages_service
-from voxagent.knowledge.service import knowledge_storage_dir, load_manifest
+from voxagent.knowledge.service import knowledge_storage_dir, list_sources, rebuild_index
 from voxagent.models import AuthContext
 from voxagent.server.auth import require_auth_context
 
@@ -28,15 +29,7 @@ def _knowledge_dir(tenant_id: uuid.UUID) -> Path:
 
 
 def _load_sources(knowledge_dir: Path) -> list[dict[str, object]]:
-    manifest = load_manifest(uuid.UUID(knowledge_dir.parent.name))
-    sources = manifest.get("sources", [])
-    if not sources:
-        return []
-    counts: dict[str, int] = {}
-    for source in sources:
-        source_key = str(source.get("source_key", "unknown"))
-        counts[source_key] = counts.get(source_key, 0) + 1
-    return [{"name": key, "chunk_count": count} for key, count in counts.items()]
+    raise RuntimeError("Use list_sources() with a database pool instead of _load_sources().")
 
 
 @router.get("/{tenant_id}/knowledge", response_class=HTMLResponse)
@@ -48,12 +41,12 @@ async def knowledge_page(
     if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    sources = _load_sources(_knowledge_dir(tenant_id))
+    sources = await list_sources(request.app.state.pool, tenant_id)
 
     return templates.TemplateResponse(
+        request,
         "knowledge.html",
         {
-            "request": request,
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
@@ -75,11 +68,11 @@ async def knowledge_upload(
     suffix = Path(filename).suffix.lower()
 
     if suffix not in _SUPPORTED_EXTENSIONS:
-        sources = _load_sources(_knowledge_dir(tenant_id))
+        sources = await list_sources(request.app.state.pool, tenant_id)
         return templates.TemplateResponse(
+            request,
             "knowledge.html",
             {
-                "request": request,
                 "tenant_id": str(tenant_id),
                 "sources": sources,
                 "active_page": "knowledge",
@@ -100,11 +93,11 @@ async def knowledge_upload(
 
     await ingest_pages_service(request.app.state.pool, tenant_id, pages)
 
-    sources = _load_sources(_knowledge_dir(tenant_id))
+    sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
+        request,
         "knowledge.html",
         {
-            "request": request,
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
@@ -126,11 +119,11 @@ async def knowledge_crawl(
     pages = await crawl_website(url)
 
     if not pages:
-        sources = _load_sources(_knowledge_dir(tenant_id))
+        sources = await list_sources(request.app.state.pool, tenant_id)
         return templates.TemplateResponse(
+            request,
             "knowledge.html",
             {
-                "request": request,
                 "tenant_id": str(tenant_id),
                 "sources": sources,
                 "active_page": "knowledge",
@@ -140,14 +133,99 @@ async def knowledge_crawl(
 
     await ingest_pages_service(request.app.state.pool, tenant_id, pages)
 
-    sources = _load_sources(_knowledge_dir(tenant_id))
+    sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
+        request,
         "knowledge.html",
         {
-            "request": request,
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
             "crawl_success": True,
+        },
+    )
+
+
+@router.post("/{tenant_id}/knowledge/reindex", response_class=HTMLResponse)
+async def knowledge_reindex(
+    tenant_id: uuid.UUID,
+    request: Request,
+    auth_context: AuthContext = Depends(require_auth_context),
+) -> HTMLResponse:
+    if not auth_context.can_access_tenant(tenant_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    await rebuild_index(request.app.state.pool, tenant_id)
+    sources = await list_sources(request.app.state.pool, tenant_id)
+    return templates.TemplateResponse(
+        request,
+        "knowledge.html",
+        {
+            "tenant_id": str(tenant_id),
+            "sources": sources,
+            "active_page": "knowledge",
+            "reindex_success": True,
+        },
+    )
+
+
+@router.post("/{tenant_id}/knowledge/recrawl", response_class=HTMLResponse)
+async def knowledge_recrawl(
+    tenant_id: uuid.UUID,
+    request: Request,
+    source: str = Form(...),
+    auth_context: AuthContext = Depends(require_auth_context),
+) -> HTMLResponse:
+    if not auth_context.can_access_tenant(tenant_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    pages = await crawl_website(source)
+    if not pages:
+        sources = await list_sources(request.app.state.pool, tenant_id)
+        return templates.TemplateResponse(
+            request,
+            "knowledge.html",
+            {
+                "tenant_id": str(tenant_id),
+                "sources": sources,
+                "active_page": "knowledge",
+                "crawl_error": f"No pages could be retrieved from '{source}'.",
+            },
+        )
+
+    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
+    sources = await list_sources(request.app.state.pool, tenant_id)
+    return templates.TemplateResponse(
+        request,
+        "knowledge.html",
+        {
+            "tenant_id": str(tenant_id),
+            "sources": sources,
+            "active_page": "knowledge",
+            "recrawl_success": True,
+        },
+    )
+
+
+@router.post("/{tenant_id}/knowledge/delete", response_class=HTMLResponse)
+async def knowledge_delete_source(
+    tenant_id: uuid.UUID,
+    request: Request,
+    source: str = Form(...),
+    auth_context: AuthContext = Depends(require_auth_context),
+) -> HTMLResponse:
+    if not auth_context.can_access_tenant(tenant_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    await delete_source_service(request.app.state.pool, tenant_id, source)
+    sources = await list_sources(request.app.state.pool, tenant_id)
+    return templates.TemplateResponse(
+        request,
+        "knowledge.html",
+        {
+            "tenant_id": str(tenant_id),
+            "sources": sources,
+            "active_page": "knowledge",
+            "delete_success": True,
         },
     )

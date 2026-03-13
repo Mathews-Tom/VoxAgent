@@ -26,6 +26,7 @@ from voxagent.queries import (
     create_tenant,
     delete_tenant,
     get_conversation,
+    get_lead_by_conversation,
     get_tenant,
     get_tenant_by_domain,
     get_visitor_memory,
@@ -209,6 +210,42 @@ class TestLeadQueries:
 
         leads = await list_leads(pool, tenant.id)
         assert len(leads) >= 1
+
+    @pytest.mark.asyncio
+    async def test_create_lead_is_idempotent_per_conversation(self, pool: asyncpg.Pool) -> None:
+        tenant = await create_tenant(pool, _make_tenant())
+        conversation = await create_conversation(
+            pool,
+            ConversationRecord(
+                tenant_id=tenant.id,
+                visitor_id="v-idempotent",
+                room_name="room-idempotent",
+                started_at=datetime.now(UTC),
+            ),
+        )
+        first = await create_lead(
+            pool,
+            LeadRecord(
+                tenant_id=tenant.id,
+                conversation_id=conversation.id,
+                name="Alice",
+                email="alice@example.com",
+            ),
+        )
+        second = await create_lead(
+            pool,
+            LeadRecord(
+                tenant_id=tenant.id,
+                conversation_id=conversation.id,
+                name="Alice Updated",
+                email="alice@example.com",
+            ),
+        )
+
+        assert first.id == second.id
+        stored = await get_lead_by_conversation(pool, conversation.id)
+        assert stored is not None
+        assert stored.name == "Alice Updated"
 
     @pytest.mark.asyncio
     async def test_pagination(self, pool: asyncpg.Pool) -> None:
