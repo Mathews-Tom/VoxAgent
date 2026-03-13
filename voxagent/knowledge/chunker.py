@@ -18,6 +18,7 @@ _SENTENCE_END = re.compile(r"(?<=[\.\?!])\s+")
 class Chunk:
     text: str
     source_url: str
+    source_version_id: str | None
     section_path: str
     heading_chain: list[str]
     chunk_index: int
@@ -120,6 +121,7 @@ def chunk_page(
                 Chunk(
                     text=combined.strip(),
                     source_url=page.url,
+                    source_version_id=page.source_version_id,
                     section_path=section_path,
                     heading_chain=list(heading_chain),
                     chunk_index=chunk_index,

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import uuid
 
 import click
 
-from voxagent.knowledge.chunker import chunk_pages
-from voxagent.knowledge.engine import KnowledgeEngine
+from voxagent.config import load_config
+from voxagent.db import close_pool, init_pool
 from voxagent.knowledge.ingest import crawl_website, ingest_files
+from voxagent.knowledge.service import ingest_pages as ingest_pages_service
 
 
 @click.group()
@@ -54,26 +56,22 @@ def ingest(
         click.echo(f"  Extracted text from {len(file_pages)} file(s)")
         pages.extend(file_pages)
 
-    engine = KnowledgeEngine(resolved_storage)
-
-    # Check for incremental re-index
-    changed = engine.needs_reindex(pages)
-    if len(changed) < len(pages):
-        click.echo(f"  {len(pages) - len(changed)} page(s) unchanged, skipping")
-        pages = changed
-
     if not pages:
         click.echo("Nothing to index — all content unchanged.")
         return
 
-    click.echo(f"Chunking {len(pages)} page(s)...")
-    chunks = chunk_pages(pages)
-    click.echo(f"  Generated {len(chunks)} chunks")
+    async def _run_ingestion() -> dict[str, object]:
+        config = load_config()
+        pool = await init_pool(config.database_url)
+        try:
+            return await ingest_pages_service(pool, tenant_id=uuid.UUID(tenant), pages=pages)
+        finally:
+            await close_pool(pool)
 
-    click.echo("Building index...")
-    engine.build_index(chunks)
-    engine.update_hash_map(pages)
+    click.echo("Building managed index...")
+    manifest = asyncio.run(_run_ingestion())
     click.echo(f"Index saved to {resolved_storage}")
+    click.echo(f"  Sources tracked: {len(manifest.get('sources', []))}")
 
 
 @cli.command("voice-setup")

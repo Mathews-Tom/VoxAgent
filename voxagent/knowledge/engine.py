@@ -19,6 +19,7 @@ _CHUNKS_FILE = "chunks.json"
 _BM25_CORPUS_FILE = "bm25_corpus.json"
 _FAISS_FILE = "faiss.index"
 _HASH_MAP_FILE = "hash_map.json"
+_MANIFEST_FILE = "manifest.json"
 
 
 @dataclass
@@ -106,6 +107,17 @@ class KnowledgeEngine:
         # Hash map
         with open(self._path(_HASH_MAP_FILE), "w", encoding="utf-8") as fh:
             json.dump(self._hash_map, fh)
+
+    def write_manifest(self, manifest: dict[str, object]) -> None:
+        with open(self._path(_MANIFEST_FILE), "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh)
+
+    def read_manifest(self) -> dict[str, object]:
+        manifest_path = self._path(_MANIFEST_FILE)
+        if not os.path.exists(manifest_path):
+            return {}
+        with open(manifest_path, encoding="utf-8") as fh:
+            return json.load(fh)
 
     # ------------------------------------------------------------------
     # Load

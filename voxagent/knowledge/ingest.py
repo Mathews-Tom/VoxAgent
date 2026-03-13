@@ -18,6 +18,8 @@ class PageContent:
     html: str
     text: str
     content_hash: str
+    source_type: str = "web"
+    source_version_id: str | None = None
 
 
 def _compute_hash(text: str) -> str:
@@ -134,6 +136,7 @@ def ingest_files(file_paths: list[str]) -> list[PageContent]:
                 html="",
                 text=text,
                 content_hash=content_hash,
+                source_type="file",
             )
         )
     return results
