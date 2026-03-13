@@ -135,8 +135,9 @@ async def _handle_lead_extraction(pool: asyncpg.Pool, app_config: Config, job: J
     if conversation is None or tenant is None:
         raise RuntimeError("Conversation or tenant missing")
 
+    transcript = None if events else conversation.transcript
     lead = await extract_lead(
-        transcript=None,
+        transcript=transcript,
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         llm_config=tenant.llm,
@@ -171,8 +172,9 @@ async def _handle_visitor_memory(pool: asyncpg.Pool, app_config: Config, job: Jo
         raise RuntimeError("Conversation or tenant missing")
 
     previous_memory = await get_visitor_memory(pool, tenant_id, visitor_id)
+    transcript = None if events else conversation.transcript
     new_summary = await summarize_for_memory(
-        transcript=None,
+        transcript=transcript,
         previous_summary=previous_memory.summary if previous_memory else None,
         llm_config=tenant.llm,
         app_config=app_config,
