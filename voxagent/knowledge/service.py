@@ -138,6 +138,7 @@ async def request_rebuild(
     job = JobRecord(
         job_type="knowledge_rebuild",
         payload={
+            "payload_version": 1,
             "tenant_id": str(tenant_id),
             "trigger": trigger,
             "source_keys": [item["source_key"] for item in changed_sources],

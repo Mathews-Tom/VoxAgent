@@ -104,6 +104,23 @@ class TestJobFailureTransitions:
 
         mock_mark_failed.assert_called_once()
 
+    @pytest.mark.asyncio
+    @patch("voxagent.jobs.runner.mark_job_failed", new_callable=AsyncMock)
+    async def test_unknown_payload_version_marks_retry_state(
+        self, mock_mark_failed: AsyncMock
+    ) -> None:
+        from voxagent.jobs.runner import _run_job
+
+        job = JobRecord(
+            job_type="lead_extraction",
+            payload={"tenant_id": "tenant-1", "payload_version": 99},
+            idempotency_key="lead_extraction:bad-version",
+        )
+
+        await _run_job(MagicMock(), MagicMock(), job)
+
+        mock_mark_failed.assert_called_once()
+
 
 class TestLeadWebhookJobs:
     @pytest.mark.asyncio
