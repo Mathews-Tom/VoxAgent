@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-
-import asyncpg
+from typing import TYPE_CHECKING
 
 from voxagent.agent.handoff import HandoffDetector, fire_handoff_webhook
-from voxagent.config import Config
+from voxagent.knowledge.service import rebuild_index
 from voxagent.metrics import JOB_DURATION, JOB_OUTCOMES
 from voxagent.models import JobRecord, JobStatus, VisitorMemory
 from voxagent.queries import (
@@ -15,7 +14,6 @@ from voxagent.queries import (
     enqueue_job,
     get_conversation,
     get_lead,
-    get_lead_by_conversation,
     get_tenant,
     get_visitor_memory,
     list_conversation_events,
@@ -23,6 +21,11 @@ from voxagent.queries import (
     mark_job_succeeded,
     upsert_visitor_memory,
 )
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from voxagent.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +86,8 @@ async def _run_job(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> No
             await _handle_handoff_dispatch(pool, job)
         elif job.job_type == "lead_webhook":
             await _handle_lead_webhook(pool, job)
+        elif job.job_type == "knowledge_rebuild":
+            await _handle_knowledge_rebuild(pool, job)
         else:
             raise RuntimeError(f"Unknown job type: {job.job_type}")
     except Exception as exc:
@@ -160,7 +165,9 @@ async def _handle_visitor_memory(pool: asyncpg.Pool, app_config: Config, job: Jo
         app_config=app_config,
         events=events,
     )
-    turn_count = (previous_memory.turn_count if previous_memory else 0) + len(conversation.transcript)
+    turn_count = (
+        previous_memory.turn_count if previous_memory else 0
+    ) + len(conversation.transcript)
     await upsert_visitor_memory(
         pool,
         VisitorMemory(
@@ -205,3 +212,8 @@ async def _handle_lead_webhook(pool: asyncpg.Pool, job: JobRecord) -> None:
     if tenant is None or lead is None or tenant.webhook_url is None:
         return
     await dispatch_lead_webhook(tenant.webhook_url, lead)
+
+
+async def _handle_knowledge_rebuild(pool: asyncpg.Pool, job: JobRecord) -> None:
+    tenant_id = uuid.UUID(str(job.payload["tenant_id"]))
+    await rebuild_index(pool, tenant_id)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import uuid
 from pathlib import Path
@@ -10,9 +9,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from voxagent.knowledge.ingest import crawl_website, ingest_files
-from voxagent.knowledge.service import delete_source as delete_source_service
-from voxagent.knowledge.service import ingest_pages as ingest_pages_service
-from voxagent.knowledge.service import knowledge_storage_dir, list_sources, rebuild_index
+from voxagent.knowledge.service import (
+    deactivate_source,
+    knowledge_storage_dir,
+    list_sources,
+    orchestrate_ingestion,
+    request_rebuild,
+)
 from voxagent.models import AuthContext
 from voxagent.server.auth import require_auth_context
 
@@ -91,7 +94,12 @@ async def knowledge_upload(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
+    result = await orchestrate_ingestion(
+        request.app.state.pool,
+        tenant_id,
+        pages,
+        trigger="dashboard_upload",
+    )
 
     sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
@@ -101,7 +109,8 @@ async def knowledge_upload(
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
-            "upload_success": True,
+            "upload_queued": bool(result["queued"]),
+            "upload_noop": not result["queued"],
         },
     )
 
@@ -131,7 +140,12 @@ async def knowledge_crawl(
             },
         )
 
-    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
+    result = await orchestrate_ingestion(
+        request.app.state.pool,
+        tenant_id,
+        pages,
+        trigger="dashboard_crawl",
+    )
 
     sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
@@ -141,7 +155,8 @@ async def knowledge_crawl(
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
-            "crawl_success": True,
+            "crawl_queued": bool(result["queued"]),
+            "crawl_noop": not result["queued"],
         },
     )
 
@@ -155,7 +170,13 @@ async def knowledge_reindex(
     if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    await rebuild_index(request.app.state.pool, tenant_id)
+    await request_rebuild(
+        request.app.state.pool,
+        tenant_id,
+        trigger="dashboard_reindex",
+        changed_sources=[{"source_key": "all", "content_hash": "all"}],
+        force=True,
+    )
     sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
         request,
@@ -164,7 +185,7 @@ async def knowledge_reindex(
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
-            "reindex_success": True,
+            "reindex_queued": True,
         },
     )
 
@@ -193,7 +214,12 @@ async def knowledge_recrawl(
             },
         )
 
-    await ingest_pages_service(request.app.state.pool, tenant_id, pages)
+    result = await orchestrate_ingestion(
+        request.app.state.pool,
+        tenant_id,
+        pages,
+        trigger="dashboard_recrawl",
+    )
     sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
         request,
@@ -202,7 +228,8 @@ async def knowledge_recrawl(
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
-            "recrawl_success": True,
+            "recrawl_queued": bool(result["queued"]),
+            "recrawl_noop": not result["queued"],
         },
     )
 
@@ -217,7 +244,14 @@ async def knowledge_delete_source(
     if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    await delete_source_service(request.app.state.pool, tenant_id, source)
+    await deactivate_source(request.app.state.pool, tenant_id, source)
+    await request_rebuild(
+        request.app.state.pool,
+        tenant_id,
+        trigger="dashboard_delete",
+        changed_sources=[{"source_key": source, "content_hash": "deleted"}],
+        force=True,
+    )
     sources = await list_sources(request.app.state.pool, tenant_id)
     return templates.TemplateResponse(
         request,
@@ -226,6 +260,6 @@ async def knowledge_delete_source(
             "tenant_id": str(tenant_id),
             "sources": sources,
             "active_page": "knowledge",
-            "delete_success": True,
+            "delete_queued": True,
         },
     )
