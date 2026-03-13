@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-
-import asyncpg
+from typing import TYPE_CHECKING
 
 from voxagent.knowledge.chunker import chunk_pages
 from voxagent.knowledge.engine import KnowledgeEngine
 from voxagent.knowledge.ingest import PageContent
 from voxagent.metrics import KNOWLEDGE_INDEX_BUILDS
+from voxagent.models import JobRecord
+from voxagent.queries import enqueue_job
+
+if TYPE_CHECKING:
+    import asyncpg
 
 
 def knowledge_storage_dir(tenant_id: uuid.UUID) -> Path:
@@ -24,12 +30,33 @@ def _chunk_counts_by_source(engine: KnowledgeEngine) -> dict[str, int]:
     return counts
 
 
-async def ingest_pages(
+async def _latest_source_versions(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> list[asyncpg.Record]:
+    return await pool.fetch(
+        """
+        SELECT DISTINCT ON (ks.id)
+            ks.source_key,
+            ks.source_type,
+            ksv.id AS version_id,
+            ksv.title,
+            ksv.content_hash,
+            ksv.content_text,
+            ksv.created_at
+        FROM knowledge_sources ks
+        JOIN knowledge_source_versions ksv ON ksv.knowledge_source_id = ks.id
+        WHERE ks.tenant_id = $1
+          AND ks.is_active = TRUE
+        ORDER BY ks.id, ksv.created_at DESC
+        """,
+        tenant_id,
+    )
+
+
+async def _upsert_source_versions(
     pool: asyncpg.Pool,
     tenant_id: uuid.UUID,
     pages: list[PageContent],
-) -> dict[str, object]:
-    source_rows = []
+) -> list[dict[str, str]]:
+    changed_sources: list[dict[str, str]] = []
     for page in pages:
         source_row = await pool.fetchrow(
             """
@@ -54,7 +81,7 @@ async def ingest_pages(
             source_row["id"],
         )
         if latest_version is None or latest_version["content_hash"] != page.content_hash:
-            version_row = await pool.fetchrow(
+            await pool.fetchrow(
                 """
                 INSERT INTO knowledge_source_versions (
                     knowledge_source_id,
@@ -72,28 +99,84 @@ async def ingest_pages(
                 page.text,
                 json.dumps({"source_url": page.url, "source_type": page.source_type}),
             )
-        else:
-            version_row = latest_version
-        source_rows.append((source_row, version_row))
+            changed_sources.append(
+                {
+                    "source_key": page.url,
+                    "content_hash": page.content_hash,
+                }
+            )
+    return changed_sources
 
-    latest_versions = await pool.fetch(
-        """
-        SELECT DISTINCT ON (ks.id)
-            ks.source_key,
-            ks.source_type,
-            ksv.id AS version_id,
-            ksv.title,
-            ksv.content_hash,
-            ksv.content_text,
-            ksv.created_at
-        FROM knowledge_sources ks
-        JOIN knowledge_source_versions ksv ON ksv.knowledge_source_id = ks.id
-        WHERE ks.tenant_id = $1
-          AND ks.is_active = TRUE
-        ORDER BY ks.id, ksv.created_at DESC
-        """,
-        tenant_id,
+
+def _job_fingerprint(
+    tenant_id: uuid.UUID,
+    trigger: str,
+    changed_sources: list[dict[str, str]],
+) -> str:
+    digest = hashlib.sha256()
+    digest.update(str(tenant_id).encode())
+    digest.update(trigger.encode())
+    for item in sorted(changed_sources, key=lambda entry: entry["source_key"]):
+        digest.update(item["source_key"].encode())
+        digest.update(item["content_hash"].encode())
+    return digest.hexdigest()[:16]
+
+
+async def request_rebuild(
+    pool: asyncpg.Pool,
+    tenant_id: uuid.UUID,
+    trigger: str,
+    changed_sources: list[dict[str, str]],
+    *,
+    force: bool = False,
+) -> JobRecord:
+    fingerprint = (
+        str(uuid.uuid4())
+        if force
+        else _job_fingerprint(tenant_id, trigger, changed_sources)
     )
+    job = JobRecord(
+        job_type="knowledge_rebuild",
+        payload={
+            "tenant_id": str(tenant_id),
+            "trigger": trigger,
+            "source_keys": [item["source_key"] for item in changed_sources],
+        },
+        idempotency_key=f"knowledge_rebuild:{tenant_id}:{fingerprint}",
+    )
+    return await enqueue_job(pool, job)
+
+
+async def orchestrate_ingestion(
+    pool: asyncpg.Pool,
+    tenant_id: uuid.UUID,
+    pages: list[PageContent],
+    *,
+    trigger: str,
+) -> dict[str, object]:
+    changed_sources = await _upsert_source_versions(pool, tenant_id, pages)
+    if not changed_sources:
+        return {
+            "queued": False,
+            "changed_sources": 0,
+            "manifest": load_manifest(tenant_id),
+        }
+
+    job = await request_rebuild(pool, tenant_id, trigger, changed_sources)
+    return {
+        "queued": True,
+        "changed_sources": len(changed_sources),
+        "job_id": str(job.id),
+    }
+
+
+async def ingest_pages(
+    pool: asyncpg.Pool,
+    tenant_id: uuid.UUID,
+    pages: list[PageContent],
+) -> dict[str, object]:
+    await _upsert_source_versions(pool, tenant_id, pages)
+    latest_versions = await _latest_source_versions(pool, tenant_id)
     pages_for_build = [
         PageContent(
             url=row["source_key"],
@@ -146,24 +229,7 @@ def load_manifest(tenant_id: uuid.UUID) -> dict[str, object]:
 
 
 async def rebuild_index(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, object]:
-    latest_versions = await pool.fetch(
-        """
-        SELECT DISTINCT ON (ks.id)
-            ks.source_key,
-            ks.source_type,
-            ksv.id AS version_id,
-            ksv.title,
-            ksv.content_hash,
-            ksv.content_text,
-            ksv.created_at
-        FROM knowledge_sources ks
-        JOIN knowledge_source_versions ksv ON ksv.knowledge_source_id = ks.id
-        WHERE ks.tenant_id = $1
-          AND ks.is_active = TRUE
-        ORDER BY ks.id, ksv.created_at DESC
-        """,
-        tenant_id,
-    )
+    latest_versions = await _latest_source_versions(pool, tenant_id)
     pages = [
         PageContent(
             url=row["source_key"],
@@ -232,10 +298,8 @@ async def list_sources(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> list[dict[st
     engine = KnowledgeEngine(str(knowledge_storage_dir(tenant_id)))
     manifest = engine.read_manifest()
     if manifest:
-        try:
+        with suppress(FileNotFoundError):
             engine.load_index()
-        except FileNotFoundError:
-            pass
     chunk_counts = _chunk_counts_by_source(engine)
     return [
         {
@@ -252,7 +316,11 @@ async def list_sources(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> list[dict[st
     ]
 
 
-async def delete_source(pool: asyncpg.Pool, tenant_id: uuid.UUID, source_key: str) -> dict[str, object]:
+async def delete_source(
+    pool: asyncpg.Pool,
+    tenant_id: uuid.UUID,
+    source_key: str,
+) -> dict[str, object]:
     await pool.execute(
         """
         UPDATE knowledge_sources
@@ -263,3 +331,15 @@ async def delete_source(pool: asyncpg.Pool, tenant_id: uuid.UUID, source_key: st
         source_key,
     )
     return await rebuild_index(pool, tenant_id)
+
+
+async def deactivate_source(pool: asyncpg.Pool, tenant_id: uuid.UUID, source_key: str) -> None:
+    await pool.execute(
+        """
+        UPDATE knowledge_sources
+        SET is_active = FALSE, updated_at = now()
+        WHERE tenant_id = $1 AND source_key = $2
+        """,
+        tenant_id,
+        source_key,
+    )

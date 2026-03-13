@@ -9,7 +9,7 @@ import click
 from voxagent.config import load_config
 from voxagent.db import close_pool, init_pool
 from voxagent.knowledge.ingest import crawl_website, ingest_files
-from voxagent.knowledge.service import ingest_pages as ingest_pages_service
+from voxagent.knowledge.service import orchestrate_ingestion
 
 
 @click.group()
@@ -64,14 +64,24 @@ def ingest(
         config = load_config()
         pool = await init_pool(config.database_url)
         try:
-            return await ingest_pages_service(pool, tenant_id=uuid.UUID(tenant), pages=pages)
+            return await orchestrate_ingestion(
+                pool,
+                tenant_id=uuid.UUID(tenant),
+                pages=pages,
+                trigger="cli_ingest",
+            )
         finally:
             await close_pool(pool)
 
-    click.echo("Building managed index...")
-    manifest = asyncio.run(_run_ingestion())
-    click.echo(f"Index saved to {resolved_storage}")
-    click.echo(f"  Sources tracked: {len(manifest.get('sources', []))}")
+    click.echo("Queueing managed ingestion...")
+    result = asyncio.run(_run_ingestion())
+    if not result["queued"]:
+        click.echo("Nothing to index — all sources already match the latest stored content.")
+        return
+
+    click.echo(f"Rebuild job queued for {resolved_storage}")
+    click.echo(f"  Changed sources: {result['changed_sources']}")
+    click.echo(f"  Job ID: {result['job_id']}")
 
 
 @cli.command("voice-setup")

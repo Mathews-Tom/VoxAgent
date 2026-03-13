@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from voxagent.models import ConversationEvent, ConversationRecord, JobRecord, LeadRecord, TenantConfig
+from voxagent.models import (
+    ConversationEvent,
+    ConversationRecord,
+    JobRecord,
+    LeadRecord,
+    TenantConfig,
+)
 
 
 def _job_payload(**payload: object) -> JobRecord:
@@ -125,10 +131,33 @@ class TestLeadWebhookJobs:
             email="alice@example.com",
         )
 
-        with patch("voxagent.webhooks.dispatch_lead_webhook", new_callable=AsyncMock) as mock_dispatch:
+        with patch(
+            "voxagent.webhooks.dispatch_lead_webhook",
+            new_callable=AsyncMock,
+        ) as mock_dispatch:
             await _handle_lead_webhook(
                 MagicMock(),
-                _job_payload(job_type="lead_webhook", tenant_id=str(tenant_id), lead_id=str(lead_id)),
+                _job_payload(
+                    job_type="lead_webhook",
+                    tenant_id=str(tenant_id),
+                    lead_id=str(lead_id),
+                ),
             )
 
             mock_dispatch.assert_called_once()
+
+
+class TestKnowledgeRebuildJobs:
+    @pytest.mark.asyncio
+    @patch("voxagent.jobs.runner.rebuild_index", new_callable=AsyncMock)
+    async def test_knowledge_rebuild_executes_rebuild(self, mock_rebuild_index: AsyncMock) -> None:
+        from voxagent.jobs.runner import _handle_knowledge_rebuild
+
+        tenant_id = uuid.uuid4()
+
+        await _handle_knowledge_rebuild(
+            MagicMock(),
+            _job_payload(job_type="knowledge_rebuild", tenant_id=str(tenant_id)),
+        )
+
+        mock_rebuild_index.assert_awaited_once()

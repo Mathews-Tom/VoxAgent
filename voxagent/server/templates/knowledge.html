@@ -15,9 +15,14 @@
     <h2 class="text-base font-semibold text-gray-900 mb-4">Upload Files</h2>
     <p class="text-sm text-gray-500 mb-4">Supported formats: .txt, .pdf, .docx</p>
 
-    {% if upload_success %}
+    {% if upload_queued %}
     <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
-      File uploaded and indexed successfully.
+      File uploaded and rebuild queued successfully.
+    </div>
+    {% endif %}
+    {% if upload_noop %}
+    <div class="mb-4 px-4 py-3 rounded-md bg-slate-50 border border-slate-200 text-sm text-slate-700">
+      Uploaded content matches the latest stored version. No rebuild was queued.
     </div>
     {% endif %}
     {% if upload_error %}
@@ -25,19 +30,24 @@
       {{ upload_error }}
     </div>
     {% endif %}
-    {% if recrawl_success %}
+    {% if recrawl_queued %}
     <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
-      Source re-crawled and index rebuilt successfully.
+      Source re-crawled and rebuild queued successfully.
     </div>
     {% endif %}
-    {% if reindex_success %}
-    <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
-      Knowledge index rebuilt successfully.
+    {% if recrawl_noop %}
+    <div class="mb-4 px-4 py-3 rounded-md bg-slate-50 border border-slate-200 text-sm text-slate-700">
+      Source content is unchanged. No rebuild was queued.
     </div>
     {% endif %}
-    {% if delete_success %}
+    {% if reindex_queued %}
     <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
-      Source removed and index rebuilt successfully.
+      Knowledge index rebuild queued successfully.
+    </div>
+    {% endif %}
+    {% if delete_queued %}
+    <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
+      Source removed and rebuild queued successfully.
     </div>
     {% endif %}
 
@@ -67,9 +77,14 @@
     <h2 class="text-base font-semibold text-gray-900 mb-4">Crawl Website</h2>
     <p class="text-sm text-gray-500 mb-4">Crawl a URL and index all reachable pages on the same domain.</p>
 
-    {% if crawl_success %}
+    {% if crawl_queued %}
     <div class="mb-4 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-sm text-green-700">
-      Website crawled and indexed successfully.
+      Website crawled and rebuild queued successfully.
+    </div>
+    {% endif %}
+    {% if crawl_noop %}
+    <div class="mb-4 px-4 py-3 rounded-md bg-slate-50 border border-slate-200 text-sm text-slate-700">
+      Crawled content matches the latest stored versions. No rebuild was queued.
     </div>
     {% endif %}
     {% if crawl_error %}

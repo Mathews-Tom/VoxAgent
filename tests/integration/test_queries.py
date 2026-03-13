@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import asyncpg
 import pytest
 import pytest_asyncio
 
-_MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-
+from voxagent.jobs.runner import run_job_batch
+from voxagent.knowledge.ingest import PageContent
+from voxagent.knowledge.service import load_manifest, orchestrate_ingestion
 from voxagent.models import (
     ConversationEvent,
     ConversationRecord,
@@ -38,6 +40,10 @@ from voxagent.queries import (
     upsert_visitor_memory,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+_MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
 _TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")
 
 pytestmark = pytest.mark.skipif(
@@ -259,6 +265,128 @@ class TestLeadQueries:
             ))
         page = await list_leads(pool, tenant.id, limit=2, offset=0)
         assert len(page) == 2
+
+
+class TestManagedKnowledgeIngestion:
+    @pytest.mark.asyncio
+    async def test_duplicate_content_does_not_create_new_source_version(
+        self, pool: asyncpg.Pool
+    ) -> None:
+        tenant = await create_tenant(pool, _make_tenant())
+        page = PageContent(
+            url="https://acme.example/pricing",
+            title="pricing",
+            html="",
+            text="Starter plan is $29/month.",
+            content_hash="hash-pricing-v1",
+            source_type="web",
+        )
+
+        first = await orchestrate_ingestion(pool, tenant.id, [page], trigger="integration")
+        assert first["queued"] is True
+        await run_job_batch(pool, MagicMock(), limit=10)
+
+        second = await orchestrate_ingestion(pool, tenant.id, [page], trigger="integration")
+        assert second["queued"] is False
+
+        version_count = await pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM knowledge_source_versions ksv
+            JOIN knowledge_sources ks ON ks.id = ksv.knowledge_source_id
+            WHERE ks.tenant_id = $1 AND ks.source_key = $2
+            """,
+            tenant.id,
+            page.url,
+        )
+        assert version_count == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_rebuild_only_versions_changed_source(self, pool: asyncpg.Pool) -> None:
+        tenant = await create_tenant(pool, _make_tenant())
+        pricing_v1 = PageContent(
+            url="https://acme.example/pricing",
+            title="pricing",
+            html="",
+            text="Starter plan is $29/month.",
+            content_hash="hash-pricing-v1",
+            source_type="web",
+        )
+        faq_v1 = PageContent(
+            url="https://acme.example/faq",
+            title="faq",
+            html="",
+            text="We support English and Hindi.",
+            content_hash="hash-faq-v1",
+            source_type="web",
+        )
+
+        initial = await orchestrate_ingestion(
+            pool,
+            tenant.id,
+            [pricing_v1, faq_v1],
+            trigger="integration",
+        )
+        assert initial["queued"] is True
+        await run_job_batch(pool, MagicMock(), limit=10)
+
+        before_rows = await pool.fetch(
+            """
+            SELECT ks.source_key, ksv.id AS version_id
+            FROM knowledge_sources ks
+            JOIN LATERAL (
+                SELECT id
+                FROM knowledge_source_versions
+                WHERE knowledge_source_id = ks.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ksv ON TRUE
+            WHERE ks.tenant_id = $1
+            ORDER BY ks.source_key
+            """,
+            tenant.id,
+        )
+        before_versions = {row["source_key"]: row["version_id"] for row in before_rows}
+
+        pricing_v2 = PageContent(
+            url="https://acme.example/pricing",
+            title="pricing",
+            html="",
+            text="Starter plan is $39/month.",
+            content_hash="hash-pricing-v2",
+            source_type="web",
+        )
+        partial = await orchestrate_ingestion(pool, tenant.id, [pricing_v2], trigger="integration")
+        assert partial["queued"] is True
+        await run_job_batch(pool, MagicMock(), limit=10)
+
+        after_rows = await pool.fetch(
+            """
+            SELECT ks.source_key, ksv.id AS version_id
+            FROM knowledge_sources ks
+            JOIN LATERAL (
+                SELECT id
+                FROM knowledge_source_versions
+                WHERE knowledge_source_id = ks.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ksv ON TRUE
+            WHERE ks.tenant_id = $1
+            ORDER BY ks.source_key
+            """,
+            tenant.id,
+        )
+        after_versions = {row["source_key"]: row["version_id"] for row in after_rows}
+
+        assert before_versions["https://acme.example/pricing"] != after_versions["https://acme.example/pricing"]
+        assert before_versions["https://acme.example/faq"] == after_versions["https://acme.example/faq"]
+
+        manifest = load_manifest(tenant.id)
+        manifest_sources = {source["source_key"] for source in manifest["sources"]}
+        assert manifest_sources == {
+            "https://acme.example/pricing",
+            "https://acme.example/faq",
+        }
 
 
 # ── Visitor Memory Tests ──
