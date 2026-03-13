@@ -12,6 +12,12 @@ conversation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar
 tenant_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "tenant_id", default=None
 )
+request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "request_id", default=None
+)
+job_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "job_id", default=None
+)
 
 
 class JSONFormatter(logging.Formatter):
@@ -21,6 +27,8 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "request_id": request_id_var.get(),
+            "job_id": job_id_var.get(),
             "conversation_id": conversation_id_var.get(),
             "tenant_id": tenant_id_var.get(),
         }

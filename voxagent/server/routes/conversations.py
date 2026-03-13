@@ -8,7 +8,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from voxagent.queries import get_conversation, list_conversations
-from voxagent.server.auth import require_auth
+from voxagent.models import AuthContext
+from voxagent.server.auth import require_auth_context
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -22,9 +23,9 @@ async def conversations_page(
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    if auth_tenant_id != tenant_id:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     pool = request.app.state.pool
@@ -48,9 +49,9 @@ async def conversation_detail(
     tenant_id: uuid.UUID,
     conversation_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    if auth_tenant_id != tenant_id:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     pool = request.app.state.pool

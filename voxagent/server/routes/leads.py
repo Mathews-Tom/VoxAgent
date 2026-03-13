@@ -4,11 +4,12 @@ import csv
 import io
 import uuid
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from voxagent.models import LeadRecord
+from voxagent.models import AuthContext, LeadRecord
 from voxagent.queries import list_leads
+from voxagent.server.auth import require_auth_context
 
 router = APIRouter()
 
@@ -21,7 +22,10 @@ async def get_leads(
     request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> list[LeadRecord]:
+    if not auth_context.can_access_tenant(tenant_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
     pool = request.app.state.pool
     return await list_leads(pool, tenant_id, limit=limit, offset=offset)
 
@@ -32,7 +36,10 @@ async def export_leads(
     request: Request,
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> StreamingResponse:
+    if not auth_context.can_access_tenant(tenant_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
     pool = request.app.state.pool
     leads = await list_leads(pool, tenant_id, limit=limit, offset=offset)
 

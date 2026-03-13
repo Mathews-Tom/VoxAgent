@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from voxagent.server.auth import require_auth
+from voxagent.models import AuthContext
+from voxagent.server.auth import require_auth_context
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -16,8 +17,8 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter(prefix="/dashboard")
 
 
-def _verify_tenant(auth_tenant_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
-    if auth_tenant_id != tenant_id:
+def _verify_tenant(auth_context: AuthContext, tenant_id: uuid.UUID) -> None:
+    if not auth_context.can_access_tenant(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -94,9 +95,9 @@ async def _get_analytics(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, 
 async def analytics_page(
     tenant_id: uuid.UUID,
     request: Request,
-    auth_tenant_id: uuid.UUID = Depends(require_auth),
+    auth_context: AuthContext = Depends(require_auth_context),
 ) -> HTMLResponse:
-    _verify_tenant(auth_tenant_id, tenant_id)
+    _verify_tenant(auth_context, tenant_id)
 
     pool = request.app.state.pool
     analytics = await _get_analytics(pool, tenant_id)

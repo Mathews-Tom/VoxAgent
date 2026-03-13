@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "livekit-agents>=1.0",
     "livekit-plugins-silero>=1.0",
+    "livekit-plugins-deepgram>=1.0",
     "livekit-plugins-openai>=1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
@@ -17,17 +18,19 @@ dependencies = [
     "click>=8.1",
     "python-multipart>=0.0.18",
     "itsdangerous>=2.2.0",
+    "argon2-cffi>=23.1.0",
     "prometheus-client>=0.24.1",
-]
-
-[project.optional-dependencies]
-knowledge = [
     "faiss-cpu>=1.9",
     "rank-bm25>=0.2",
     "sentence-transformers>=3.4",
     "readability-lxml>=0.8",
+    "chardet>=3.0.2,<6",
     "lxml[html_clean]>=5.3",
+    "livekit-plugins-cartesia>=1.4.5",
+    "livekit-plugins-elevenlabs>=1.4.5",
 ]
+
+[project.optional-dependencies]
 tts-qwen = [
     "qwen-tts>=0.1",
     "torch>=2.5",
@@ -52,6 +55,9 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests requiring external services",
+]
+filterwarnings = [
+    "ignore:builtin type Swig:DeprecationWarning",
 ]
 
 [tool.ruff]

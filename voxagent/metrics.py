@@ -64,6 +64,32 @@ HANDOFF_TRIGGERS = Counter(
     ["tenant_id", "reason"],
 )
 
+POST_SESSION_STAGE_DURATION = Histogram(
+    "voxagent_post_session_stage_duration_seconds",
+    "Time spent in synchronous post-session stages before async offload",
+    ["tenant_id", "stage", "outcome"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+)
+
+POST_SESSION_STAGE_FAILURES = Counter(
+    "voxagent_post_session_stage_failures_total",
+    "Failures observed in synchronous post-session stages",
+    ["tenant_id", "stage"],
+)
+
+JOB_OUTCOMES = Counter(
+    "voxagent_job_outcomes_total",
+    "Async job outcomes by tenant and job type",
+    ["tenant_id", "job_type", "status"],
+)
+
+JOB_DURATION = Histogram(
+    "voxagent_job_duration_seconds",
+    "Async job execution latency",
+    ["tenant_id", "job_type"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+)
+
 
 def metrics_response() -> tuple[bytes, str]:
     """Return (body, content_type) for the /metrics endpoint."""
