@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,7 +44,8 @@ class TestVoxAgentInit:
         from voxagent.agent.core import VoxAgent
 
         agent = VoxAgent(_make_tenant(), MagicMock())
-        assert agent._transcript == []
+        assert agent.conversation_events() == []
+        assert agent.transcript() == []
 
 
 @patch("voxagent.agent.core.silero")
@@ -147,8 +149,12 @@ class TestOnMessage:
         agent = VoxAgent(_make_tenant(), MagicMock())
         agent.on_message("user", "hello")
         agent.on_message("assistant", "hi")
-        assert len(agent._transcript) == 2
-        assert agent._transcript[0] == {"role": "user", "content": "hello"}
+        transcript = agent.transcript()
+        events = agent.conversation_events()
+        assert len(events) == 2
+        assert transcript[0] == {"role": "user", "content": "hello"}
+        assert events[0].sequence_number == 0
+        assert events[1].sequence_number == 1
 
 
 @patch("voxagent.agent.core.silero")
@@ -158,8 +164,10 @@ class TestOnMessage:
 class TestSaveConversation:
     @pytest.mark.asyncio
     @patch("voxagent.agent.core.create_conversation", new_callable=AsyncMock)
+    @patch("voxagent.agent.core.create_conversation_events", new_callable=AsyncMock)
     async def test_calls_create_conversation(
         self,
+        mock_create_events: AsyncMock,
         mock_create: AsyncMock,
         mock_stt: MagicMock,
         mock_llm: MagicMock,
@@ -168,7 +176,7 @@ class TestSaveConversation:
     ) -> None:
         from voxagent.agent.core import VoxAgent
 
-        mock_create.return_value = MagicMock()
+        mock_create.return_value = MagicMock(id=uuid.uuid4())
         agent = VoxAgent(_make_tenant(), MagicMock())
         agent.on_message("user", "test")
 
@@ -177,6 +185,7 @@ class TestSaveConversation:
         await agent.save_conversation(pool, "room-1", "visitor-1", started)
 
         mock_create.assert_called_once()
+        mock_create_events.assert_called_once()
         record = mock_create.call_args[0][1]
         assert record.room_name == "room-1"
         assert record.visitor_id == "visitor-1"

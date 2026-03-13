@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from voxagent.agent.handoff import HandoffDetector, HandoffReason
+from voxagent.agent.handoff import HandoffDetector, HandoffReason, events_to_transcript
+from voxagent.models import ConversationEvent
 
 
 class TestHandoffDetector:
@@ -88,3 +89,20 @@ class TestHandoffDetector:
             {"role": "user", "content": repeated_message},
         ]
         assert detector.check(transcript) == HandoffReason.REPEATED_FAILURE
+
+    def test_event_stream_uses_same_detection_logic(self) -> None:
+        detector = HandoffDetector()
+        events = [
+            ConversationEvent(role="user", content="I want to talk to a human", sequence_number=0),
+        ]
+        assert detector.check(events=events) == HandoffReason.EXPLICIT_REQUEST
+
+    def test_events_to_transcript_preserves_order(self) -> None:
+        events = [
+            ConversationEvent(role="assistant", content="second", sequence_number=1),
+            ConversationEvent(role="user", content="first", sequence_number=0),
+        ]
+        assert events_to_transcript(events) == [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "second"},
+        ]

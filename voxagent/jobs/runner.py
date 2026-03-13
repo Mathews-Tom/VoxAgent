@@ -16,6 +16,7 @@ from voxagent.queries import (
     get_conversation,
     get_tenant,
     get_visitor_memory,
+    list_conversation_events,
     mark_job_failed,
     mark_job_succeeded,
     upsert_visitor_memory,
@@ -108,17 +109,19 @@ async def _handle_lead_extraction(pool: asyncpg.Pool, app_config: Config, job: J
     tenant_id = uuid.UUID(str(job.payload["tenant_id"]))
     conversation_id = uuid.UUID(str(job.payload["conversation_id"]))
     conversation = await get_conversation(pool, conversation_id)
+    events = await list_conversation_events(pool, conversation_id)
     tenant = await get_tenant(pool, tenant_id)
     if conversation is None or tenant is None:
         raise RuntimeError("Conversation or tenant missing")
 
     lead = await extract_lead(
-        transcript=conversation.transcript,
+        transcript=None,
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         llm_config=tenant.llm,
         app_config=app_config,
         pool=pool,
+        events=events,
     )
     if lead is not None and tenant.webhook_url:
         await dispatch_lead_webhook(tenant.webhook_url, lead)
@@ -131,16 +134,18 @@ async def _handle_visitor_memory(pool: asyncpg.Pool, app_config: Config, job: Jo
     conversation_id = uuid.UUID(str(job.payload["conversation_id"]))
     visitor_id = str(job.payload["visitor_id"])
     conversation = await get_conversation(pool, conversation_id)
+    events = await list_conversation_events(pool, conversation_id)
     tenant = await get_tenant(pool, tenant_id)
     if conversation is None or tenant is None:
         raise RuntimeError("Conversation or tenant missing")
 
     previous_memory = await get_visitor_memory(pool, tenant_id, visitor_id)
     new_summary = await summarize_for_memory(
-        transcript=conversation.transcript,
+        transcript=None,
         previous_summary=previous_memory.summary if previous_memory else None,
         llm_config=tenant.llm,
         app_config=app_config,
+        events=events,
     )
     turn_count = (previous_memory.turn_count if previous_memory else 0) + len(conversation.transcript)
     await upsert_visitor_memory(
@@ -158,12 +163,13 @@ async def _handle_handoff_dispatch(pool: asyncpg.Pool, job: JobRecord) -> None:
     tenant_id = uuid.UUID(str(job.payload["tenant_id"]))
     conversation_id = uuid.UUID(str(job.payload["conversation_id"]))
     conversation = await get_conversation(pool, conversation_id)
+    events = await list_conversation_events(pool, conversation_id)
     tenant = await get_tenant(pool, tenant_id)
     if conversation is None or tenant is None or tenant.webhook_url is None:
         return
 
     detector = HandoffDetector()
-    reason = detector.check(conversation.transcript)
+    reason = detector.check(events=events)
     if reason is None:
         return
 

@@ -5,7 +5,8 @@ import logging
 import httpx
 
 from voxagent.config import Config
-from voxagent.models import LLMConfig, LLMProvider
+from voxagent.agent.handoff import events_to_transcript
+from voxagent.models import ConversationEvent, LLMConfig, LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,19 @@ Return ONLY a plain-text summary (no JSON, no markdown). Maximum 300 words.
 
 
 async def summarize_for_memory(
-    transcript: list[dict[str, str]],
+    transcript: list[dict[str, str]] | None,
     previous_summary: str | None,
     llm_config: LLMConfig,
     app_config: Config,
+    *,
+    events: list[ConversationEvent] | None = None,
 ) -> str:
+    normalized_transcript = transcript or events_to_transcript(events)
     lines: list[str] = []
     if previous_summary:
         lines.append(f"Previous memory:\n{previous_summary}\n")
     lines.append("New conversation:")
-    for turn in transcript:
+    for turn in normalized_transcript:
         role = turn.get("role", "unknown").capitalize()
         content = turn.get("content", "")
         lines.append(f"{role}: {content}")
