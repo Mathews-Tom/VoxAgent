@@ -57,54 +57,62 @@ async def _upsert_source_versions(
     pages: list[PageContent],
 ) -> list[dict[str, str]]:
     changed_sources: list[dict[str, str]] = []
-    for page in pages:
-        source_row = await pool.fetchrow(
-            """
-            INSERT INTO knowledge_sources (tenant_id, source_key, source_type, updated_at)
-            VALUES ($1, $2, $3, now())
-            ON CONFLICT (tenant_id, source_key)
-            DO UPDATE SET source_type = EXCLUDED.source_type, updated_at = now()
-            RETURNING *
-            """,
-            tenant_id,
-            page.url,
-            page.source_type,
-        )
-        latest_version = await pool.fetchrow(
-            """
-            SELECT *
-            FROM knowledge_source_versions
-            WHERE knowledge_source_id = $1
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            source_row["id"],
-        )
-        if latest_version is None or latest_version["content_hash"] != page.content_hash:
-            await pool.fetchrow(
+    async with pool.acquire() as conn, conn.transaction():
+        for page in pages:
+            # Serialize writes per tenant+source so concurrent ingestion does
+            # not emit duplicate versions for the same source hash.
+            await conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+                str(tenant_id),
+                page.url,
+            )
+            source_row = await conn.fetchrow(
                 """
-                INSERT INTO knowledge_source_versions (
-                    knowledge_source_id,
-                    title,
-                    content_hash,
-                    content_text,
-                    metadata
-                )
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO knowledge_sources (tenant_id, source_key, source_type, updated_at)
+                VALUES ($1, $2, $3, now())
+                ON CONFLICT (tenant_id, source_key)
+                DO UPDATE SET source_type = EXCLUDED.source_type, updated_at = now()
                 RETURNING *
                 """,
+                tenant_id,
+                page.url,
+                page.source_type,
+            )
+            latest_version = await conn.fetchrow(
+                """
+                SELECT *
+                FROM knowledge_source_versions
+                WHERE knowledge_source_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
                 source_row["id"],
-                page.title,
-                page.content_hash,
-                page.text,
-                json.dumps({"source_url": page.url, "source_type": page.source_type}),
             )
-            changed_sources.append(
-                {
-                    "source_key": page.url,
-                    "content_hash": page.content_hash,
-                }
-            )
+            if latest_version is None or latest_version["content_hash"] != page.content_hash:
+                await conn.fetchrow(
+                    """
+                    INSERT INTO knowledge_source_versions (
+                        knowledge_source_id,
+                        title,
+                        content_hash,
+                        content_text,
+                        metadata
+                    )
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING *
+                    """,
+                    source_row["id"],
+                    page.title,
+                    page.content_hash,
+                    page.text,
+                    json.dumps({"source_url": page.url, "source_type": page.source_type}),
+                )
+                changed_sources.append(
+                    {
+                        "source_key": page.url,
+                        "content_hash": page.content_hash,
+                    }
+                )
     return changed_sources
 
 
@@ -138,6 +146,7 @@ async def request_rebuild(
     job = JobRecord(
         job_type="knowledge_rebuild",
         payload={
+            "payload_version": 1,
             "tenant_id": str(tenant_id),
             "trigger": trigger,
             "source_keys": [item["source_key"] for item in changed_sources],

@@ -81,6 +81,38 @@ async def _get_analytics(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, 
         {"intent": r["intent"], "cnt": r["cnt"]} for r in top_intents_rows
     ]
 
+    job_status_rows = await pool.fetch(
+        """
+        SELECT status, COUNT(*) AS cnt
+        FROM jobs
+        WHERE payload->>'tenant_id' = $1
+        GROUP BY status
+        ORDER BY status
+        """,
+        str(tenant_id),
+    )
+    job_status_counts = {
+        "pending": 0,
+        "running": 0,
+        "failed": 0,
+        "dead_letter": 0,
+        "succeeded": 0,
+    }
+    for row in job_status_rows:
+        job_status_counts[row["status"]] = row["cnt"]
+
+    recent_job_failures = await pool.fetch(
+        """
+        SELECT job_type, last_error, updated_at
+        FROM jobs
+        WHERE payload->>'tenant_id' = $1
+          AND status IN ('failed', 'dead_letter')
+        ORDER BY updated_at DESC
+        LIMIT 10
+        """,
+        str(tenant_id),
+    )
+
     return {
         "total_conversations": total_conversations,
         "total_leads": total_leads,
@@ -88,6 +120,15 @@ async def _get_analytics(pool: asyncpg.Pool, tenant_id: uuid.UUID) -> dict[str, 
         "by_language": by_language,
         "over_time": over_time,
         "top_intents": top_intents,
+        "job_status_counts": job_status_counts,
+        "recent_job_failures": [
+            {
+                "job_type": row["job_type"],
+                "last_error": row["last_error"] or "unknown error",
+                "updated_at": row["updated_at"].isoformat(),
+            }
+            for row in recent_job_failures
+        ],
     }
 
 
@@ -107,9 +148,9 @@ async def analytics_page(
     avg_duration_formatted = f"{avg_seconds // 60}:{avg_seconds % 60:02d}"
 
     return templates.TemplateResponse(
+        request,
         "analytics.html",
         {
-            "request": request,
             "tenant_id": str(tenant_id),
             "active_page": "analytics",
             "total_conversations": analytics["total_conversations"],
@@ -118,5 +159,7 @@ async def analytics_page(
             "by_language": analytics["by_language"],
             "over_time": analytics["over_time"],
             "top_intents": analytics["top_intents"],
+            "job_status_counts": analytics["job_status_counts"],
+            "recent_job_failures": analytics["recent_job_failures"],
         },
     )

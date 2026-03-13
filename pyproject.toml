@@ -55,6 +55,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests requiring external services",
+    "load: marks load and soak tests for operational readiness",
 ]
 filterwarnings = [
     "ignore:builtin type Swig:DeprecationWarning",

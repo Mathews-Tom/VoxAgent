@@ -30,6 +30,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _job_payload_version(job: JobRecord) -> int:
+    raw_version = job.payload.get("payload_version", 1)
+    version = int(raw_version)
+    if version != 1:
+        msg = f"Unsupported payload version: {version}"
+        raise RuntimeError(msg)
+    return version
+
+
 async def enqueue_post_session_jobs(
     pool: asyncpg.Pool,
     tenant_id: uuid.UUID,
@@ -40,6 +49,7 @@ async def enqueue_post_session_jobs(
         JobRecord(
             job_type="lead_extraction",
             payload={
+                "payload_version": 1,
                 "tenant_id": str(tenant_id),
                 "conversation_id": str(conversation_id),
                 "visitor_id": visitor_id,
@@ -49,6 +59,7 @@ async def enqueue_post_session_jobs(
         JobRecord(
             job_type="visitor_memory",
             payload={
+                "payload_version": 1,
                 "tenant_id": str(tenant_id),
                 "conversation_id": str(conversation_id),
                 "visitor_id": visitor_id,
@@ -58,6 +69,7 @@ async def enqueue_post_session_jobs(
         JobRecord(
             job_type="handoff_dispatch",
             payload={
+                "payload_version": 1,
                 "tenant_id": str(tenant_id),
                 "conversation_id": str(conversation_id),
             },
@@ -78,6 +90,7 @@ async def _run_job(pool: asyncpg.Pool, app_config: Config, job: JobRecord) -> No
     tenant_id = str(job.payload.get("tenant_id", "unknown"))
     started = datetime.now(UTC)
     try:
+        _job_payload_version(job)
         if job.job_type == "lead_extraction":
             await _handle_lead_extraction(pool, app_config, job)
         elif job.job_type == "visitor_memory":
@@ -122,8 +135,9 @@ async def _handle_lead_extraction(pool: asyncpg.Pool, app_config: Config, job: J
     if conversation is None or tenant is None:
         raise RuntimeError("Conversation or tenant missing")
 
+    transcript = None if events else conversation.transcript
     lead = await extract_lead(
-        transcript=None,
+        transcript=transcript,
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         llm_config=tenant.llm,
@@ -158,8 +172,9 @@ async def _handle_visitor_memory(pool: asyncpg.Pool, app_config: Config, job: Jo
         raise RuntimeError("Conversation or tenant missing")
 
     previous_memory = await get_visitor_memory(pool, tenant_id, visitor_id)
+    transcript = None if events else conversation.transcript
     new_summary = await summarize_for_memory(
-        transcript=None,
+        transcript=transcript,
         previous_summary=previous_memory.summary if previous_memory else None,
         llm_config=tenant.llm,
         app_config=app_config,

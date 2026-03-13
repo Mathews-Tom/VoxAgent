@@ -87,6 +87,49 @@ class TestLeadExtractionJobs:
             assert queued_job.job_type == "lead_webhook"
             assert queued_job.payload["lead_id"] == str(lead_id)
 
+    @pytest.mark.asyncio
+    @patch("voxagent.jobs.runner.get_tenant", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.list_conversation_events", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.get_conversation", new_callable=AsyncMock)
+    async def test_lead_extraction_falls_back_to_conversation_transcript(
+        self,
+        mock_get_conversation: AsyncMock,
+        mock_list_events: AsyncMock,
+        mock_get_tenant: AsyncMock,
+    ) -> None:
+        from voxagent.jobs.runner import _handle_lead_extraction
+
+        tenant_id = uuid.uuid4()
+        conversation_id = uuid.uuid4()
+        transcript = [{"role": "user", "content": "my email is alice@example.com"}]
+        mock_get_conversation.return_value = ConversationRecord(
+            id=conversation_id,
+            tenant_id=tenant_id,
+            visitor_id="visitor-1",
+            room_name="room-1",
+            transcript=transcript,
+            started_at=datetime.now(UTC),
+        )
+        mock_list_events.return_value = []
+        mock_get_tenant.return_value = TenantConfig(
+            id=tenant_id,
+            name="Acme",
+            domain="acme.example",
+        )
+
+        with patch("voxagent.leads.extract_lead", new_callable=AsyncMock) as mock_extract_lead:
+            await _handle_lead_extraction(
+                MagicMock(),
+                MagicMock(),
+                _job_payload(
+                    tenant_id=str(tenant_id),
+                    conversation_id=str(conversation_id),
+                    visitor_id="visitor-1",
+                ),
+            )
+
+        assert mock_extract_lead.await_args.kwargs["transcript"] == transcript
+
 
 class TestJobFailureTransitions:
     @pytest.mark.asyncio
@@ -98,6 +141,23 @@ class TestJobFailureTransitions:
             job_type="unknown",
             payload={"tenant_id": "tenant-1"},
             idempotency_key="unknown:1",
+        )
+
+        await _run_job(MagicMock(), MagicMock(), job)
+
+        mock_mark_failed.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("voxagent.jobs.runner.mark_job_failed", new_callable=AsyncMock)
+    async def test_unknown_payload_version_marks_retry_state(
+        self, mock_mark_failed: AsyncMock
+    ) -> None:
+        from voxagent.jobs.runner import _run_job
+
+        job = JobRecord(
+            job_type="lead_extraction",
+            payload={"tenant_id": "tenant-1", "payload_version": 99},
+            idempotency_key="lead_extraction:bad-version",
         )
 
         await _run_job(MagicMock(), MagicMock(), job)
@@ -161,3 +221,59 @@ class TestKnowledgeRebuildJobs:
         )
 
         mock_rebuild_index.assert_awaited_once()
+
+
+class TestVisitorMemoryJobs:
+    @pytest.mark.asyncio
+    @patch("voxagent.jobs.runner.get_visitor_memory", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.upsert_visitor_memory", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.get_tenant", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.list_conversation_events", new_callable=AsyncMock)
+    @patch("voxagent.jobs.runner.get_conversation", new_callable=AsyncMock)
+    async def test_visitor_memory_falls_back_to_conversation_transcript(
+        self,
+        mock_get_conversation: AsyncMock,
+        mock_list_events: AsyncMock,
+        mock_get_tenant: AsyncMock,
+        mock_upsert_memory: AsyncMock,
+        mock_get_visitor_memory: AsyncMock,
+    ) -> None:
+        from voxagent.jobs.runner import _handle_visitor_memory
+
+        tenant_id = uuid.uuid4()
+        conversation_id = uuid.uuid4()
+        transcript = [{"role": "user", "content": "I prefer email follow-up"}]
+        mock_get_conversation.return_value = ConversationRecord(
+            id=conversation_id,
+            tenant_id=tenant_id,
+            visitor_id="visitor-1",
+            room_name="room-1",
+            transcript=transcript,
+            started_at=datetime.now(UTC),
+        )
+        mock_list_events.return_value = []
+        mock_get_tenant.return_value = TenantConfig(
+            id=tenant_id,
+            name="Acme",
+            domain="acme.example",
+        )
+        mock_get_visitor_memory.return_value = None
+
+        with patch(
+            "voxagent.memory.summarize_for_memory",
+            new_callable=AsyncMock,
+            return_value="Memory summary",
+        ) as mock_summarize:
+            await _handle_visitor_memory(
+                MagicMock(),
+                MagicMock(),
+                _job_payload(
+                    job_type="visitor_memory",
+                    tenant_id=str(tenant_id),
+                    conversation_id=str(conversation_id),
+                    visitor_id="visitor-1",
+                ),
+            )
+
+        assert mock_summarize.await_args.kwargs["transcript"] == transcript
+        mock_upsert_memory.assert_awaited_once()
